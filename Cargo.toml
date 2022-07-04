@@ -1,6 +1,6 @@
 [package]
-name = "sube"
-description = "SUBmit Extrinsics to a Substrate node"
+name = "polkapipe"
+description = "Fork of sube focusing on communication"
 license = "Apache-2.0"
 version = "0.5.1"
 authors = ["Daniel Olano <daniel@olanod.com>"]
@@ -9,17 +9,17 @@ repository = "https://github.com/valibre-org/sube"
 
 [dependencies]
 async-trait = "0.1.51"
-blake2 = { version = "0.9.2", default-features = false }
-codec = { version = "2.3.1", package = "parity-scale-codec", default-features = false }
-frame-metadata = { version = "14.0.0", default-features = false, features = ["std"] }
+# blake2 = { version = "0.9.2", default-features = false }
+# codec = { version = "2.3.1", package = "parity-scale-codec", default-features = false }
+# frame-metadata = { version = "14.0.0", default-features = false, features = ["std"] }
 hex = { version = "0.4.3", default-features = false, features = ["alloc"] }
 log = "0.4.14"
-once_cell = { version = "1.8.0", default-features = false }
-twox-hash = { version = "1.6.1", default-features = false }
+# once_cell = { version = "1.8.0", default-features = false }
+# twox-hash = { version = "1.6.1", default-features = false }
 
-scale-info = { version = "1.0.0", optional = true }
-jsonrpc = { version = "0.12.0", default-features = false, optional = true }
-scales = { version = "0.8.0", package = "scale-serialization", default-features = false, optional = true }
+# scale-info = { version = "1.0.0", optional = true }
+jsonrpc = { version = "0.12.0", default-features = false }
+# scales = { version = "0.8.0", package = "scale-serialization", default-features = false, optional = true }
 
 # http backend
 surf = { version = "2.3.1", default_features = false, optional = true }
@@ -30,53 +30,34 @@ futures-channel = { version = "0.3.17", default-features = false, features = ["a
 futures-util = { version = "0.3.17", default-features = false, features = ["sink"], optional = true }
 async-mutex = { version = "1.4.0", optional = true }
 async-tls = { version = "0.11.0", default-features = false, optional = true }
-
-# bin target
-anyhow = { version = "1.0.44", optional = true }
 async-std = { version = "1.10.0", default_features = false, optional = true }
-serde_json = { version = "1.0.68", default-features = false, optional = true }
-stderrlog = { version = "0.5.1", optional = true }
-structopt = { version = "0.3.25", optional = true }
-url = { version = "2.2.2", optional = true }
-serde = { version = "1.0.130", default-features = false, optional = true }
+
+# jsonrpsee-types = "*"
+# serde_json = "*"
 
 [dev-dependencies]
 async-std = { version = "1.10.0", features = ["attributes"] }
 hex-literal = "0.3.3"
 
 [features]
-default = ["bin", "json", "std"]
+default = ["std"]
 #default = ["v14", "ws", "decode", "json", "std"]
-bin = [
-	"anyhow",
-	"async-std/attributes",
-	"http",
-	"decode",
-	"encode",
-	"serde",
-	"serde_json",
-	"std",
-	"stderrlog",
-	"structopt",
-	"url",
-	"v14",
-	"wss",
-]
-decode = ["v14", "serde", "scales/codec"]
-encode = ["v14", "scales/experimental-serializer"]
-http = ["jsonrpc", "surf/h1-client-rustls"]
-http-web = ["jsonrpc", "surf/wasm-client"]
-json = ["v14", "scales/json"]
+# decode = ["v14", "serde", "scales/codec"]
+# encode = ["v14", "scales/experimental-serializer"]
+http = ["surf/h1-client-rustls"]
+http-web = ["surf/wasm-client"]
+# json = ["v14", "scales/json"]
 std = []
-v12 = ["frame-metadata/v12"]
-v13 = ["frame-metadata/v13"]
-v14 = ["frame-metadata/v14", "scale-info", "scales"]
-ws = ["async-std", "async-tungstenite", "async-mutex", "futures-util", "futures-channel", "jsonrpc"]
+# v12 = ["frame-metadata/v12"]
+# v13 = ["frame-metadata/v13"]
+# v14 = ["frame-metadata/v14", "scale-info", "scales"]
+ws = ["async-std", "async-tungstenite", "async-mutex", "futures-util", "futures-channel"]
 wss = ["ws", "async-tls", "async-tungstenite/async-tls"]
 
-[[bin]]
-name = "sube"
-required-features = ["bin"]
 
 [package.metadata.docs.rs]
 features = ["http"]
+
+
+# [patch.crates-io]
+# stderrlog = { git="https://github.com/cardoe/stderrlog-rs.git" }

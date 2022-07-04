@@ -18,29 +18,12 @@ sube = { version = "0.4", default_features = false, features = ["v13", "http"] }
 Creating a client is as simple as instantiating a backend and converting it to a `Sube` instance.
 
 ```
-# use sube::{Sube, ws, JsonValue, Error, meta::*, Backend};
+# use polkapipe::{Sube, Error, Backend};
 # #[async_std::main] async fn main() -> Result<(), Error> {
 # const CHAIN_URL: &str = "ws://localhost:24680";
 // Create an instance of Sube from any of the available backends
-let client: Sube<_> = ws::Backend::new_ws2(CHAIN_URL).await?.into();
+// let client: Sube<_> = ws::Backend::new_ws2(CHAIN_URL).await?.into();
 
-// With the client you can:
-// - Inspect its metadata
-let meta = client.metadata().await?;
-let system = meta.pallet_by_name("System").unwrap();
-assert_eq!(system.index, 0);
-
-// - Query the chain storage with a path-like syntax
-let latest_block: JsonValue = client.query("system/number").await?.into();
-assert!(
-    latest_block.as_u64().unwrap() > 0,
-    "block {} is greater than 0",
-    latest_block
-);
-
-// - Submit a signed extrinsic
-# // const SIGNED_EXTRINSIC: [u8; 6] = hex_literal::hex!("ff");
-// client.submit(SIGNED_EXTRINSIC).await?;
 # Ok(()) }
 ```
 
@@ -57,39 +40,39 @@ assert!(
 
 */
 
-#[cfg(not(any(feature = "v12", feature = "v13", feature = "v14")))]
-compile_error!("Enable one of the metadata versions");
-#[cfg(all(feature = "v12", feature = "v13", feature = "v14"))]
-compile_error!("Only one metadata version can be enabled at the moment");
-#[cfg(all(feature = "v12", feature = "v13"))]
-compile_error!("Only one metadata version can be enabled at the moment");
-#[cfg(all(feature = "v12", feature = "v14"))]
-compile_error!("Only one metadata version can be enabled at the moment");
-#[cfg(all(feature = "v13", feature = "v14"))]
-compile_error!("Only one metadata version can be enabled at the moment");
+// #[cfg(not(any(feature = "v12", feature = "v13", feature = "v14")))]
+// compile_error!("Enable one of the metadata versions");
+// #[cfg(all(feature = "v12", feature = "v13", feature = "v14"))]
+// compile_error!("Only one metadata version can be enabled at the moment");
+// #[cfg(all(feature = "v12", feature = "v13"))]
+// compile_error!("Only one metadata version can be enabled at the moment");
+// #[cfg(all(feature = "v12", feature = "v14"))]
+// compile_error!("Only one metadata version can be enabled at the moment");
+// #[cfg(all(feature = "v13", feature = "v14"))]
+// compile_error!("Only one metadata version can be enabled at the moment");
 
 #[macro_use]
 extern crate alloc;
 
-pub use codec;
-pub use frame_metadata::RuntimeMetadataPrefixed;
-pub use meta::Metadata;
-pub use meta_ext as meta;
-#[cfg(feature = "json")]
-pub use scales::JsonValue;
-#[cfg(feature = "v14")]
-pub use scales::Value;
+// pub use codec;
+// pub use frame_metadata::RuntimeMetadataPrefixed;
+// pub use meta::Metadata;
+// pub use meta_ext as meta;
+// #[cfg(feature = "json")]
+// pub use scales::JsonValue;
+// #[cfg(feature = "v14")]
+// pub use scales::Value;
 
 use async_trait::async_trait;
 use core::{fmt, ops::Deref};
-use meta::{Entry, Meta};
-#[cfg(feature = "std")]
-use once_cell::sync::OnceCell;
-#[cfg(not(feature = "std"))]
-use once_cell::unsync::OnceCell;
+// use meta::{Entry, Meta};
+// #[cfg(feature = "std")]
+// use once_cell::sync::OnceCell;
+// #[cfg(not(feature = "std"))]
+// use once_cell::unsync::OnceCell;
 use prelude::*;
-#[cfg(feature = "v14")]
-use scale_info::PortableRegistry;
+// #[cfg(feature = "v14")]
+// use scale_info::PortableRegistry;
 
 mod prelude {
     pub use alloc::boxed::Box;
@@ -105,102 +88,102 @@ pub mod http;
 #[cfg(feature = "ws")]
 pub mod ws;
 
-mod hasher;
-pub mod meta_ext;
-#[cfg(any(feature = "http", feature = "http-web", feature = "ws"))]
+// mod hasher;
+// pub mod meta_ext;
+// #[cfg(any(feature = "http", feature = "http-web", feature = "ws"))]
 mod rpc;
 
 /// Main interface for interacting with the Substrate based blockchain
 #[derive(Debug)]
 pub struct Sube<B> {
     backend: B,
-    meta: OnceCell<Metadata>,
+    // meta: OnceCell<Metadata>,
 }
 
 impl<B: Backend> Sube<B> {
     pub fn new(backend: B) -> Self {
         Sube {
             backend,
-            meta: OnceCell::new(),
+            // meta: OnceCell::new(),
         }
     }
 
-    pub fn new_with_meta(backend: B, meta: Metadata) -> Self {
-        Sube {
-            backend,
-            meta: meta.into(),
-        }
-    }
+    // pub fn new_with_meta(backend: B, meta: Metadata) -> Self {
+    //     Sube {
+    //         backend,
+    //         // meta: meta.into(),
+    //     }
+    // }
 
-    /// Get the chain metadata and cache it for future calls
-    pub async fn metadata(&self) -> Result<&Metadata> {
-        match self.meta.get() {
-            Some(meta) => Ok(meta),
-            None => {
-                let meta = self.backend.metadata().await?;
-                self.meta.set(meta).expect("unset");
-                Ok(self.meta.get().unwrap())
-            }
-        }
-    }
+    // /// Get the chain metadata and cache it for future calls
+    // pub async fn metadata(&self) -> Result<&Metadata> {
+    //     match self.meta.get() {
+    //         Some(meta) => Ok(meta),
+    //         None => {
+    //             let meta = self.backend.metadata().await?;
+    //             // self.meta.set(meta).expect("unset");
+    //             Ok(self.meta.get().unwrap())
+    //         }
+    //     }
+    // }
 
-    /// Use a path-like syntax to query storage items(e.g. `"pallet/item/keyN"`)
-    #[cfg(feature = "v14")]
-    pub async fn query(&self, key: &str) -> Result<Value<'_>> {
-        let key = self.key_from_path(key).await?;
-        let res = self.query_storage(&key).await?;
-        let reg = self.registry().await?;
-        Ok(Value::new(res, key.1, reg))
-    }
+    // Use a path-like syntax to query storage items(e.g. `"pallet/item/keyN"`)
+    // #[cfg(feature = "v14")]
+    // pub async fn query(&self, key: &str) -> Result<Value<'_>> {
+    //     let key = self.key_from_path(key).await?;
+    //     let res = self.query_storage(&key).await?;
+    //     let reg = self.registry().await?;
+    //     Ok(Value::new(res, key.1, reg))
+    // }
 
-    pub async fn key_from_path(&self, path: &str) -> Result<StorageKey> {
-        StorageKey::from_uri(self.metadata().await?, path)
-    }
+    // pub async fn key_from_path(&self, path: &str) -> Result<StorageKey> {
+    //     StorageKey::from_uri(self.metadata().await?, path)
+    // }
 
-    /// Get the type registry of the chain
-    #[cfg(feature = "v14")]
-    pub async fn registry(&self) -> Result<&PortableRegistry> {
-        Ok(&self.metadata().await?.types)
-    }
+    // /// Get the type registry of the chain
+    // #[cfg(feature = "v14")]
+    // pub async fn registry(&self) -> Result<&PortableRegistry> {
+    //     Ok(&self.metadata().await?.types)
+    // }
 
-    #[cfg(feature = "decode")]
-    pub async fn decode<'a, T>(
-        &'a self,
-        data: T,
-        ty: u32,
-    ) -> Result<impl serde::Serialize + codec::Encode + 'a>
-    where
-        T: Into<scales::Bytes> + 'static,
-    {
-        Ok(Value::new(data, ty, self.registry().await?))
-    }
+    // #[cfg(feature = "decode")]
+    // pub async fn decode<'a, T>(
+    //     &'a self,
+    //     data: T,
+    //     ty: u32,
+    // ) -> Result<impl serde::Serialize + codec::Encode + 'a>
+    // where
+    //     T: Into<scales::Bytes> + 'static,
+    // {
+    //     Ok(Value::new(data, ty, self.registry().await?))
+    // }
 
-    #[cfg(feature = "encode")]
-    pub async fn encode(&self, value: impl serde::Serialize, ty: u32) -> Result<Vec<u8>> {
-        let reg = self.registry().await?;
-        scales::to_vec_with_info(&value, (reg, ty).into()).map_err(|e| Error::Encode(e.to_string()))
-    }
+    // #[cfg(feature = "encode")]
+    // pub async fn encode(&self, value: impl serde::Serialize, ty: u32) -> Result<Vec<u8>> {
+    //     let reg = self.registry().await?;
+    //     scales::to_vec_with_info(&value, (reg, ty).into()).map_err(|e| Error::Encode(e.to_string()))
+    // }
 
-    #[cfg(feature = "encode")]
-    pub async fn encode_iter<I, V>(&self, value: I, ty: u32) -> Result<Vec<u8>>
-    where
-        I: IntoIterator<Item = V>,
-        V: Into<JsonValue>,
-    {
-        let val: JsonValue = value.into_iter().collect();
-        self.encode(val, ty).await
-    }
+    // #[cfg(feature = "encode")]
+    // pub async fn encode_iter<I, V>(&self, value: I, ty: u32) -> Result<Vec<u8>>
+    // where
+    //     I: IntoIterator<Item = V>,
+    //     V: Into<JsonValue>,
+    // {
+    //     let val: JsonValue = value.into_iter().collect();
+    //     self.encode(val, ty).await
+    // }
 
-    #[cfg(feature = "encode")]
-    pub async fn encode_iter2<I, K, V>(&self, value: I, ty: u32) -> Result<Vec<u8>>
-    where
-        I: IntoIterator<Item = (K, V)>,
-        K: Into<String>,
-        V: Into<JsonValue>,
-    {
-        let val: JsonValue = value.into_iter().collect();
-        self.encode(val, ty).await
-    }
+    // #[cfg(feature = "encode")]
+    // pub async fn encode_iter2<I, K, V>(&self, value: I, ty: u32) -> Result<Vec<u8>>
+    // where
+    //     I: IntoIterator<Item = (K, V)>,
+    //     K: Into<String>,
+    //     V: Into<JsonValue>,
+    // {
+    //     let val: JsonValue = value.into_iter().collect();
+    //     self.encode(val, ty).await
+    // }
 }
 
 impl<B: Backend> From<B> for Sube<B> {
@@ -234,37 +217,37 @@ impl<T: Backend> Deref for Sube<T> {
 #[async_trait]
 pub trait Backend {
     /// Get raw storage items form the blockchain
-    async fn query_storage(&self, key: &StorageKey) -> Result<Vec<u8>>;
+    async fn query_storage(&self, key: &[u8]) -> crate::Result<Vec<u8>>;
 
     /// Send a signed extrinsic to the blockchain
-    async fn submit<T>(&self, ext: T) -> Result<()>
-    where
-        T: AsRef<[u8]> + Send;
+    // async fn submit<T>(&self, ext: T) -> Result<()>
+    // where
+    //     T: AsRef<[u8]> + Send;
 
-    async fn metadata(&self) -> Result<Metadata>;
+    async fn metadata(&self, as_of: Option<&[u8]>) -> crate::Result<Vec<u8>>;
 }
 
 /// A Dummy backend for offline querying of metadata
-pub struct Offline(pub Metadata);
+// pub struct Offline(pub Metadata);
 
-#[async_trait]
-impl Backend for Offline {
-    async fn query_storage(&self, _key: &StorageKey) -> Result<Vec<u8>> {
-        Err(Error::ChainUnavailable)
-    }
+// #[async_trait]
+// impl Backend for Offline {
+//     async fn query_storage(&self, _key: &StorageKey) -> Result<Vec<u8>> {
+//         Err(Error::ChainUnavailable)
+//     }
 
-    /// Send a signed extrinsic to the blockchain
-    async fn submit<T>(&self, _ext: T) -> Result<()>
-    where
-        T: AsRef<[u8]> + Send,
-    {
-        Err(Error::ChainUnavailable)
-    }
+//     /// Send a signed extrinsic to the blockchain
+//     async fn submit<T>(&self, _ext: T) -> Result<()>
+//     where
+//         T: AsRef<[u8]> + Send,
+//     {
+//         Err(Error::ChainUnavailable)
+//     }
 
-    async fn metadata(&self) -> Result<Metadata> {
-        Ok(self.0.cloned())
-    }
-}
+//     async fn metadata(&self) -> Result<Metadata> {
+//         Ok(self.0.cloned())
+//     }
+// }
 
 #[derive(Clone, Debug)]
 pub enum Error {
@@ -272,8 +255,8 @@ pub enum Error {
     BadInput,
     BadKey,
     BadMetadata,
-    Decode(codec::Error),
-    Encode(String),
+    // Decode(codec::Error),
+    // Encode(String),
     NoMetadataLoaded,
     Node(String),
     ParseStorageItem,
@@ -299,69 +282,69 @@ impl From<async_tungstenite::tungstenite::Error> for Error {
 #[cfg(feature = "std")]
 impl std::error::Error for Error {}
 
-/// Represents a key of the blockchain storage in its raw form
-#[derive(Clone, Debug)]
-pub struct StorageKey(Vec<u8>, u32);
+// /// Represents a key of the blockchain storage in its raw form
+// #[derive(Clone, Debug)]
+// pub struct StorageKey(Vec<u8>, u32);
 
-impl StorageKey {
-    /// Parse the StorageKey from a URL-like path
-    pub fn from_uri(meta: &Metadata, uri: &str) -> Result<Self> {
-        let (pallet, item, map_keys) = Self::parse_uri(uri).ok_or(Error::ParseStorageItem)?;
-        log::debug!(
-            "StorageKey parts: [module]={} [item]={} [keys]={:?}",
-            pallet,
-            item,
-            map_keys,
-        );
-        Self::new(meta, &pallet, &item, &map_keys)
-    }
+// impl StorageKey {
+//     /// Parse the StorageKey from a URL-like path
+//     pub fn from_uri(meta: &Metadata, uri: &str) -> Result<Self> {
+//         let (pallet, item, map_keys) = Self::parse_uri(uri).ok_or(Error::ParseStorageItem)?;
+//         log::debug!(
+//             "StorageKey parts: [module]={} [item]={} [keys]={:?}",
+//             pallet,
+//             item,
+//             map_keys,
+//         );
+//         Self::new(meta, &pallet, &item, &map_keys)
+//     }
 
-    pub fn new(meta: &Metadata, pallet: &str, item: &str, map_keys: &[&str]) -> Result<Self> {
-        let entry = meta
-            .storage_entry(pallet, item)
-            .ok_or(Error::StorageKeyNotFound)?;
-        let key = entry
-            .key(pallet, map_keys)
-            .ok_or(Error::StorageKeyNotFound)?;
+//     pub fn new(meta: &Metadata, pallet: &str, item: &str, map_keys: &[&str]) -> Result<Self> {
+//         let entry = meta
+//             .storage_entry(pallet, item)
+//             .ok_or(Error::StorageKeyNotFound)?;
+//         let key = entry
+//             .key(pallet, map_keys)
+//             .ok_or(Error::StorageKeyNotFound)?;
 
-        Ok(StorageKey(key, entry.ty_id()))
-    }
+//         Ok(StorageKey(key, entry.ty_id()))
+//     }
 
-    pub fn parse_uri(uri: &str) -> Option<(String, String, Vec<&str>)> {
-        let mut path = uri.trim_matches('/').split('/');
-        let pallet = path.next().map(to_camel)?;
-        let item = path.next().map(to_camel)?;
-        let map_keys = path.collect::<Vec<_>>();
-        Some((pallet, item, map_keys))
-    }
-}
+//     pub fn parse_uri(uri: &str) -> Option<(String, String, Vec<&str>)> {
+//         let mut path = uri.trim_matches('/').split('/');
+//         let pallet = path.next().map(to_camel)?;
+//         let item = path.next().map(to_camel)?;
+//         let map_keys = path.collect::<Vec<_>>();
+//         Some((pallet, item, map_keys))
+//     }
+// }
 
-impl fmt::Display for StorageKey {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "0x{}", hex::encode(&self.0))
-    }
-}
+// impl fmt::Display for StorageKey {
+//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+//         write!(f, "0x{}", hex::encode(&self.0))
+//     }
+// }
 
-impl AsRef<[u8]> for StorageKey {
-    fn as_ref(&self) -> &[u8] {
-        self.0.as_ref()
-    }
-}
+// impl AsRef<[u8]> for StorageKey {
+//     fn as_ref(&self) -> &[u8] {
+//         self.0.as_ref()
+//     }
+// }
 
-fn to_camel(term: &str) -> String {
-    let underscore_count = term.chars().filter(|c| *c == '-').count();
-    let mut result = String::with_capacity(term.len() - underscore_count);
-    let mut at_new_word = true;
+// fn to_camel(term: &str) -> String {
+//     let underscore_count = term.chars().filter(|c| *c == '-').count();
+//     let mut result = String::with_capacity(term.len() - underscore_count);
+//     let mut at_new_word = true;
 
-    for c in term.chars().skip_while(|&c| c == '-') {
-        if c == '-' {
-            at_new_word = true;
-        } else if at_new_word {
-            result.push(c.to_ascii_uppercase());
-            at_new_word = false;
-        } else {
-            result.push(c);
-        }
-    }
-    result
-}
+//     for c in term.chars().skip_while(|&c| c == '-') {
+//         if c == '-' {
+//             at_new_word = true;
+//         } else if at_new_word {
+//             result.push(c.to_ascii_uppercase());
+//             at_new_word = false;
+//         } else {
+//             result.push(c);
+//         }
+//     }
+//     result
+// }
