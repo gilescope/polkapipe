@@ -152,19 +152,28 @@ mod tests {
     use crate::Backend;
 
     #[test]
+    #[cfg(feature = "wss")]
     fn can_get_metadata() {
         println!("hello test");
-        let backend = async_std::task::block_on(crate::ws::Backend::new_ws2("wss://rpc.polkadot.io")).unwrap();
-        let latest_metadata = async_std::task::block_on( backend.metadata(None)).unwrap();
+        let backend =
+            async_std::task::block_on(crate::ws::Backend::new_ws2("wss://rpc.polkadot.io"))
+                .unwrap();
+        let latest_metadata = async_std::task::block_on(backend.metadata(None)).unwrap();
+        assert!(latest_metadata.len() > 0);
     }
 
-        #[test]
-
+    #[test]
+    #[cfg(feature = "wss")]
     fn can_get_metadata_as_of() {
         println!("hello test");
-        let backend = async_std::task::block_on(crate::ws::Backend::new_ws2("wss://rpc.polkadot.io")).unwrap();
-        let block_hash = hex::decode("e33568bff8e6f30fee6f217a93523a6b29c31c8fe94c076d818b97b97cfd3a16").unwrap();
-        let latest_metadata = async_std::task::block_on( backend.metadata(Some(&block_hash))).unwrap();
-        assert!(latest_metadata.len() > 0);
+        let backend =
+            async_std::task::block_on(crate::ws::Backend::new_ws2("wss://rpc.polkadot.io"))
+                .unwrap();
+        let block_hash =
+            hex::decode("e33568bff8e6f30fee6f217a93523a6b29c31c8fe94c076d818b97b97cfd3a16")
+                .unwrap();
+        let as_of_metadata =
+            async_std::task::block_on(backend.metadata(Some(&block_hash))).unwrap();
+        assert!(as_of_metadata.len() > 0);
     }
 }

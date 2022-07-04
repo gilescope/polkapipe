@@ -1,19 +1,10 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 /*!
-Sube is a lightweight Substrate client with multi-backend support
-that can use a chain's type information to auto encode/decode data
-into human-readable formats like JSON.
+Polkapipe is a fork of Sube that has few deps with multi-backend support
+that can be used to access substrate based chains. It leaves encoding / decoding
+to higher level crates like desub.
 
 ## Usage
-
-Sube requires one of the metadata versions to be enabled(default: `v14`).
-You can change it activating the relevant feature.
-You will also likely want to activate a backend(default: `ws`).
-
-```toml
-[dependencies]
-sube = { version = "0.4", default_features = false, features = ["v13", "http"] }
-```
 
 Creating a client is as simple as instantiating a backend and converting it to a `Sube` instance.
 
@@ -40,39 +31,12 @@ Creating a client is as simple as instantiating a backend and converting it to a
 
 */
 
-// #[cfg(not(any(feature = "v12", feature = "v13", feature = "v14")))]
-// compile_error!("Enable one of the metadata versions");
-// #[cfg(all(feature = "v12", feature = "v13", feature = "v14"))]
-// compile_error!("Only one metadata version can be enabled at the moment");
-// #[cfg(all(feature = "v12", feature = "v13"))]
-// compile_error!("Only one metadata version can be enabled at the moment");
-// #[cfg(all(feature = "v12", feature = "v14"))]
-// compile_error!("Only one metadata version can be enabled at the moment");
-// #[cfg(all(feature = "v13", feature = "v14"))]
-// compile_error!("Only one metadata version can be enabled at the moment");
-
 #[macro_use]
 extern crate alloc;
 
-// pub use codec;
-// pub use frame_metadata::RuntimeMetadataPrefixed;
-// pub use meta::Metadata;
-// pub use meta_ext as meta;
-// #[cfg(feature = "json")]
-// pub use scales::JsonValue;
-// #[cfg(feature = "v14")]
-// pub use scales::Value;
-
 use async_trait::async_trait;
 use core::{fmt, ops::Deref};
-// use meta::{Entry, Meta};
-// #[cfg(feature = "std")]
-// use once_cell::sync::OnceCell;
-// #[cfg(not(feature = "std"))]
-// use once_cell::unsync::OnceCell;
 use prelude::*;
-// #[cfg(feature = "v14")]
-// use scale_info::PortableRegistry;
 
 mod prelude {
     pub use alloc::boxed::Box;
@@ -81,39 +45,27 @@ mod prelude {
 }
 
 pub type Result<T> = core::result::Result<T, Error>;
+
 /// Surf based backend
 #[cfg(any(feature = "http", feature = "http-web"))]
 pub mod http;
+
 /// Tungstenite based backend
 #[cfg(feature = "ws")]
 pub mod ws;
 
-// mod hasher;
-// pub mod meta_ext;
-// #[cfg(any(feature = "http", feature = "http-web", feature = "ws"))]
 mod rpc;
 
 /// Main interface for interacting with the Substrate based blockchain
 #[derive(Debug)]
 pub struct Sube<B> {
     backend: B,
-    // meta: OnceCell<Metadata>,
 }
 
 impl<B: Backend> Sube<B> {
     pub fn new(backend: B) -> Self {
-        Sube {
-            backend,
-            // meta: OnceCell::new(),
-        }
+        Sube { backend }
     }
-
-    // pub fn new_with_meta(backend: B, meta: Metadata) -> Self {
-    //     Sube {
-    //         backend,
-    //         // meta: meta.into(),
-    //     }
-    // }
 
     // /// Get the chain metadata and cache it for future calls
     // pub async fn metadata(&self) -> Result<&Metadata> {
@@ -125,64 +77,6 @@ impl<B: Backend> Sube<B> {
     //             Ok(self.meta.get().unwrap())
     //         }
     //     }
-    // }
-
-    // Use a path-like syntax to query storage items(e.g. `"pallet/item/keyN"`)
-    // #[cfg(feature = "v14")]
-    // pub async fn query(&self, key: &str) -> Result<Value<'_>> {
-    //     let key = self.key_from_path(key).await?;
-    //     let res = self.query_storage(&key).await?;
-    //     let reg = self.registry().await?;
-    //     Ok(Value::new(res, key.1, reg))
-    // }
-
-    // pub async fn key_from_path(&self, path: &str) -> Result<StorageKey> {
-    //     StorageKey::from_uri(self.metadata().await?, path)
-    // }
-
-    // /// Get the type registry of the chain
-    // #[cfg(feature = "v14")]
-    // pub async fn registry(&self) -> Result<&PortableRegistry> {
-    //     Ok(&self.metadata().await?.types)
-    // }
-
-    // #[cfg(feature = "decode")]
-    // pub async fn decode<'a, T>(
-    //     &'a self,
-    //     data: T,
-    //     ty: u32,
-    // ) -> Result<impl serde::Serialize + codec::Encode + 'a>
-    // where
-    //     T: Into<scales::Bytes> + 'static,
-    // {
-    //     Ok(Value::new(data, ty, self.registry().await?))
-    // }
-
-    // #[cfg(feature = "encode")]
-    // pub async fn encode(&self, value: impl serde::Serialize, ty: u32) -> Result<Vec<u8>> {
-    //     let reg = self.registry().await?;
-    //     scales::to_vec_with_info(&value, (reg, ty).into()).map_err(|e| Error::Encode(e.to_string()))
-    // }
-
-    // #[cfg(feature = "encode")]
-    // pub async fn encode_iter<I, V>(&self, value: I, ty: u32) -> Result<Vec<u8>>
-    // where
-    //     I: IntoIterator<Item = V>,
-    //     V: Into<JsonValue>,
-    // {
-    //     let val: JsonValue = value.into_iter().collect();
-    //     self.encode(val, ty).await
-    // }
-
-    // #[cfg(feature = "encode")]
-    // pub async fn encode_iter2<I, K, V>(&self, value: I, ty: u32) -> Result<Vec<u8>>
-    // where
-    //     I: IntoIterator<Item = (K, V)>,
-    //     K: Into<String>,
-    //     V: Into<JsonValue>,
-    // {
-    //     let val: JsonValue = value.into_iter().collect();
-    //     self.encode(val, ty).await
     // }
 }
 
@@ -228,36 +122,33 @@ pub trait Backend {
 }
 
 /// A Dummy backend for offline querying of metadata
-// pub struct Offline(pub Metadata);
+pub struct Offline(pub Vec<u8>);
 
-// #[async_trait]
-// impl Backend for Offline {
-//     async fn query_storage(&self, _key: &StorageKey) -> Result<Vec<u8>> {
-//         Err(Error::ChainUnavailable)
-//     }
+#[async_trait]
+impl Backend for Offline {
+    async fn query_storage(&self, _key: &[u8]) -> Result<Vec<u8>> {
+        Err(Error::ChainUnavailable)
+    }
 
-//     /// Send a signed extrinsic to the blockchain
-//     async fn submit<T>(&self, _ext: T) -> Result<()>
-//     where
-//         T: AsRef<[u8]> + Send,
-//     {
-//         Err(Error::ChainUnavailable)
-//     }
+    // /// Send a signed extrinsic to the blockchain
+    // async fn submit<T>(&self, _ext: T) -> Result<()>
+    // where
+    //     T: AsRef<[u8]> + Send,
+    // {
+    //     Err(Error::ChainUnavailable)
+    // }
 
-//     async fn metadata(&self) -> Result<Metadata> {
-//         Ok(self.0.cloned())
-//     }
-// }
+    async fn metadata(&self, _as_of: Option<&[u8]>) -> Result<Vec<u8>> {
+        Ok(self.0.clone())
+    }
+
+}
 
 #[derive(Clone, Debug)]
 pub enum Error {
     ChainUnavailable,
     BadInput,
     BadKey,
-    BadMetadata,
-    // Decode(codec::Error),
-    // Encode(String),
-    NoMetadataLoaded,
     Node(String),
     ParseStorageItem,
     StorageKeyNotFound,
@@ -281,70 +172,3 @@ impl From<async_tungstenite::tungstenite::Error> for Error {
 
 #[cfg(feature = "std")]
 impl std::error::Error for Error {}
-
-// /// Represents a key of the blockchain storage in its raw form
-// #[derive(Clone, Debug)]
-// pub struct StorageKey(Vec<u8>, u32);
-
-// impl StorageKey {
-//     /// Parse the StorageKey from a URL-like path
-//     pub fn from_uri(meta: &Metadata, uri: &str) -> Result<Self> {
-//         let (pallet, item, map_keys) = Self::parse_uri(uri).ok_or(Error::ParseStorageItem)?;
-//         log::debug!(
-//             "StorageKey parts: [module]={} [item]={} [keys]={:?}",
-//             pallet,
-//             item,
-//             map_keys,
-//         );
-//         Self::new(meta, &pallet, &item, &map_keys)
-//     }
-
-//     pub fn new(meta: &Metadata, pallet: &str, item: &str, map_keys: &[&str]) -> Result<Self> {
-//         let entry = meta
-//             .storage_entry(pallet, item)
-//             .ok_or(Error::StorageKeyNotFound)?;
-//         let key = entry
-//             .key(pallet, map_keys)
-//             .ok_or(Error::StorageKeyNotFound)?;
-
-//         Ok(StorageKey(key, entry.ty_id()))
-//     }
-
-//     pub fn parse_uri(uri: &str) -> Option<(String, String, Vec<&str>)> {
-//         let mut path = uri.trim_matches('/').split('/');
-//         let pallet = path.next().map(to_camel)?;
-//         let item = path.next().map(to_camel)?;
-//         let map_keys = path.collect::<Vec<_>>();
-//         Some((pallet, item, map_keys))
-//     }
-// }
-
-// impl fmt::Display for StorageKey {
-//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-//         write!(f, "0x{}", hex::encode(&self.0))
-//     }
-// }
-
-// impl AsRef<[u8]> for StorageKey {
-//     fn as_ref(&self) -> &[u8] {
-//         self.0.as_ref()
-//     }
-// }
-
-// fn to_camel(term: &str) -> String {
-//     let underscore_count = term.chars().filter(|c| *c == '-').count();
-//     let mut result = String::with_capacity(term.len() - underscore_count);
-//     let mut at_new_word = true;
-
-//     for c in term.chars().skip_while(|&c| c == '-') {
-//         if c == '-' {
-//             at_new_word = true;
-//         } else if at_new_word {
-//             result.push(c.to_ascii_uppercase());
-//             at_new_word = false;
-//         } else {
-//             result.push(c);
-//         }
-//     }
-//     result
-// }

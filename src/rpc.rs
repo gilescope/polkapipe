@@ -1,4 +1,3 @@
-
 use async_trait::async_trait;
 use jsonrpc::serde_json::value::RawValue;
 pub use jsonrpc::{error, Error, Request, Response};
@@ -51,20 +50,19 @@ impl<R: Rpc> Backend for R {
     //     Ok(())
     // }
 
-    async fn metadata(&self, as_of: Option<&[u8]>) -> crate::Result<Vec<u8>> { 
-        let mut buf = String::new();
+    async fn metadata(&self, as_of: Option<&[u8]>) -> crate::Result<Vec<u8>> {
+        let buf;
         let params = if let Some(block_hash) = as_of {
             buf = hex::encode(block_hash);
             vec![buf.as_str()]
-		} else {
-           vec![]
+        } else {
+            vec![]
         };
         let meta = self
             .rpc("state_getMetadata", &params[..])
             .await
             .map_err(|e| crate::Error::Node(e.to_string()))?;
 
-        // let meta = meta::from_bytes(&mut meta.as_slice()).map_err(|_| crate::Error::BadMetadata)?;
         log::trace!("Metadata {:#?}", meta);
         Ok(meta)
     }
