@@ -58,6 +58,9 @@ pub mod ws;
 
 mod rpc;
 
+#[cfg(feature = "wsee")]
+mod rpsee;
+
 /// Main interface for interacting with the Substrate based blockchain
 #[derive(Debug)]
 pub struct Sube<B> {

@@ -7,6 +7,9 @@ authors = ["Daniel Olano <daniel@olanod.com>"]
 edition = "2018"
 repository = "https://github.com/valibre-org/sube"
 
+[lib]
+crate-type = ["cdylib"]
+
 [dependencies]
 async-trait = "0.1.51"
 hex = { version = "0.4.3", default-features = false, features = ["alloc"] }
@@ -24,19 +27,61 @@ async-mutex = { version = "1.4.0", optional = true }
 async-tls = { version = "0.11.0", default-features = false, optional = true }
 async-std = { version = "1.10.0", default_features = false, optional = true }
 
+# see backend
+jsonrpsee-wasm-client = { git="https://github.com/paritytech/jsonrpsee.git", optional = true }
+getrandom = { version = "0.2.7", features = ["js"] }
+js-sys = "0.3"
+wasm-bindgen = "*"
+
+[dependencies.web-sys]
+version = "0.3"
+features = [
+  "BinaryType",
+  "Blob",
+  "ErrorEvent",
+  "FileReader",
+  "MessageEvent",
+  "ProgressEvent",
+  "WebSocket",
+  'Headers',
+  'Request',
+  'RequestInit',
+  'RequestMode',
+  'Response',
+  'Window',
+  'Document',
+  'Element',
+  'HtmlCanvasElement',
+  'WebGlBuffer',
+  'WebGlVertexArrayObject',
+  'WebGl2RenderingContext',
+  'WebGlProgram',
+  'WebGlShader',
+
+      'console',
+   
+    'HtmlElement',
+    'HtmlInputElement',
+  
+ 
+    'Worker',
+]
+
 [dev-dependencies]
 async-std = { version = "1.10.0", features = ["attributes"] }
 hex-literal = "0.3.3"
 env_logger = "*"
+# Wasm testing:
+wasm-bindgen-test = "0.3"
 
 [features]
-default = ["std", "ws"]
+default = ["std"]
 http = ["surf/h1-client-rustls"]
 http-web = ["surf/wasm-client"]
 std = []
 ws = ["async-std", "async-tungstenite", "async-mutex", "futures-util", "futures-channel"]
 wss = ["ws", "async-tls", "async-tungstenite/async-tls"]
-
+wsee = ["jsonrpsee-wasm-client"]
 
 [package.metadata.docs.rs]
 features = ["http"]

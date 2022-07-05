@@ -12,3 +12,8 @@ Polkapipe supports multiple backends under different feature flags like `http`, 
 
   * few dependencies (and work in browesr)
   * endever to give you as good an error message as we can get our hands on.
+
+## Testing:
+
+To run wasm tests:
+cargo install wasm-bindgen-cli 
