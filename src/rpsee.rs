@@ -1,6 +1,4 @@
-
- use wasm_bindgen::prelude::*;
- 
+use wasm_bindgen::prelude::*;
 
 // pub struct Backend<Tx> {
 // 	tx: Mutex<Tx>,
@@ -53,9 +51,11 @@
 // 		messages.lock().await.insert(id, sender);
 
 // 		// send rpc request
-//         // example working request: {"method":"chain_getBlockHash","params":["1"],"id":1,"jsonrpc":"2.0"}
-// 		let msg = format!("{{\"id\":{}, \"jsonrpc\": \"2.0\", \"method\":\"{}\", \"params\":[{}]}}", id, method, params);
-		
+//         // example working request:
+// {"method":"chain_getBlockHash","params":["1"],"id":1,"jsonrpc":"2.0"} 		let msg =
+// format!("{{\"id\":{}, \"jsonrpc\": \"2.0\", \"method\":\"{}\", \"params\":[{}]}}", id, method,
+// params);
+
 // 		log::debug!("RPC Request {} ...", &msg);
 // 		let _ = self.tx.lock().await.send(Message::Text(msg)).await;
 
@@ -154,31 +154,35 @@
 // 	}
 // }
 
-
-
-
 #[cfg(feature = "wsee")]
 #[cfg(test)]
 mod tests {
+	wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
+	use jsonrpsee_core::client::ClientT;
 	use jsonrpsee_wasm_client::*;
-    use wasm_bindgen_test::wasm_bindgen_test;
-    use web_sys::{ErrorEvent, MessageEvent, WebSocket};
-
-    #[wasm_bindgen_test]
+	use wasm_bindgen_test::wasm_bindgen_test;
+	use web_sys::{ErrorEvent, MessageEvent, WebSocket};
+	#[wasm_bindgen_test]
 	#[test]
 	fn can_get_rpsee() {
-        async_std::task::block_on(rr());
+		async_std::task::block_on(rr());
 	}
 
-    async fn rr() {
-        env_logger::init();
+	async fn rr() {
+		env_logger::init();
 
-        // let ws = WebSocket::new("wss://echo.websocket.events").unwrap();
-  let ws = WebSocket::new("ws://rpc.polkadot.io:433").unwrap();
+		// let ws = WebSocket::new("wss://echo.websocket.events").unwrap();
+		//   let ws = WebSocket::new("ws://rpc.polkadot.io:433").unwrap();
+		// use jsonrpsee_core::client::ClientT;
+		let client = WasmClientBuilder::default().build("wss://rpc.polkadot.io:433").await.unwrap();
+		// panic!("result: fred");
+		let response : Result<String,_> = client
+			.request(
+				r##"{"method":"chain_getBlockHash","params":["1"],"id":1,"jsonrpc":"2.0"}"##,
+				None,
+			)
+			.await;
 
-//  let client = WasmClientBuilder::default()
-//           .build("ws://rpc.polkadot.io:433")
-//           .await.unwrap();
-    } 
-
+		panic!("result: {:?}", response);
+	}
 }

@@ -121,8 +121,8 @@ pub trait Backend {
 	/// Get block hash for block number
 	async fn query_block_hash(&self, block_number: &[u32]) -> crate::Result<Vec<u8>>;
 
-    /// Get block for block hash
-    async fn query_block(&self, block_hash: &str) -> crate::Result<Vec<u8>>;
+	/// Get block for block hash
+	async fn query_block(&self, block_hash: &str) -> crate::Result<Vec<u8>>;
 
 	/// Send a signed extrinsic to the blockchain
 	// async fn submit<T>(&self, ext: T) -> Result<()>
@@ -153,9 +153,9 @@ impl Backend for Offline {
 		Err(Error::ChainUnavailable)
 	}
 
-    async fn query_block(&self, _block_hash: &str) -> crate::Result<Vec<u8>> {
-        Err(Error::ChainUnavailable)
-    }
+	async fn query_block(&self, _block_hash: &str) -> crate::Result<Vec<u8>> {
+		Err(Error::ChainUnavailable)
+	}
 
 	async fn query_metadata(&self, _as_of: Option<&[u8]>) -> Result<Vec<u8>> {
 		Ok(self.0.clone())

@@ -16,6 +16,7 @@ hex = { version = "0.4.3", default-features = false, features = ["alloc"] }
 log = "0.4.14"
 jsonrpc = { version = "0.12.0", default-features = false }
 
+
 # http backend
 surf = { version = "2.3.1", default_features = false, optional = true }
 
@@ -28,7 +29,8 @@ async-tls = { version = "0.11.0", default-features = false, optional = true }
 async-std = { version = "1.10.0", default_features = false, optional = true }
 
 # see backend
-jsonrpsee-wasm-client = { git="https://github.com/paritytech/jsonrpsee.git", optional = true }
+jsonrpsee-wasm-client = { version="*", optional = true }
+jsonrpsee-core = { version= "*"}
 getrandom = { version = "0.2.7", features = ["js"] }
 js-sys = "0.3"
 wasm-bindgen = "*"

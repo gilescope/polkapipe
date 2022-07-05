@@ -44,9 +44,9 @@ impl<R: Rpc> Backend for R {
 	}
 
 	async fn query_block_hash(&self, block_numbers: &[u32]) -> crate::Result<Vec<u8>> {
-		let num : Vec<_> = block_numbers.iter().map(|i|i.to_string()).collect();
+		let num: Vec<_> = block_numbers.iter().map(|i| i.to_string()).collect();
 		// let params = block_numbers;/
-		let n: Vec<_> = num.iter().map(|i|i.as_str()).collect();
+		let n: Vec<_> = num.iter().map(|i| i.as_str()).collect();
 
 		self.rpc("chain_getBlockHash", Self::convert_params(&n)).await.map_err(|e| {
 			log::debug!("RPC failure: {}", &e);
@@ -58,12 +58,16 @@ impl<R: Rpc> Backend for R {
 		// let hash = hex::encode(block_hash);
 		// let params = vec![block_hash_in_hex];
 
-		self.rpc_single("chain_getBlock", RawValue::from_string(format!("\"{}\"", block_hash_in_hex)).unwrap()).await.map_err(|e| {
+		self.rpc_single(
+			"chain_getBlock",
+			RawValue::from_string(format!("\"{}\"", block_hash_in_hex)).unwrap(),
+		)
+		.await
+		.map_err(|e| {
 			log::debug!("RPC failure: {}", &e);
 			crate::Error::Node(e.to_string())
 		})
 	}
-
 
 	// async fn submit<T>(&self, ext: T) -> crate::Result<()>
 	// where

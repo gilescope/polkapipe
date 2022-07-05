@@ -15,6 +15,7 @@ in
 with nixpkgs; pkgs.mkShell {
   buildInputs = [
  curl.dev
+ wasm-pack
  clang
     pkg-config
 	openssl.dev
