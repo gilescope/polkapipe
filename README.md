@@ -7,3 +7,8 @@ It does not touch the metadata and leaves everything as bytes. You should use so
 When submitting extrinsics Sube only does that, it's your responsability to sign the payload with a different tool first(e.g. [libwallet](https://github.com/valibre-org/libwallet)) before you feed the extrinsic data to the library.
 
 Polkapipe supports multiple backends under different feature flags like `http`, `http-web` or `ws`/`wss`, with [future support](https://github.com/virto-network/sube/milestone/3) for a [`smoldot`](https://github.com/paritytech/smoldot) based light-node.  
+
+## Goals:
+
+  * few dependencies (and work in browesr)
+  * endever to give you as good an error message as we can get our hands on.

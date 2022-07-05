@@ -39,9 +39,11 @@ use core::{fmt, ops::Deref};
 use prelude::*;
 
 mod prelude {
-    pub use alloc::boxed::Box;
-    pub use alloc::string::{String, ToString};
-    pub use alloc::vec::Vec;
+	pub use alloc::{
+		boxed::Box,
+		string::{String, ToString},
+		vec::Vec,
+	};
 }
 
 pub type Result<T> = core::result::Result<T, Error>;
@@ -59,39 +61,39 @@ mod rpc;
 /// Main interface for interacting with the Substrate based blockchain
 #[derive(Debug)]
 pub struct Sube<B> {
-    backend: B,
+	backend: B,
 }
 
 impl<B: Backend> Sube<B> {
-    pub fn new(backend: B) -> Self {
-        Sube { backend }
-    }
+	pub fn new(backend: B) -> Self {
+		Sube { backend }
+	}
 
-    // /// Get the chain metadata and cache it for future calls
-    // pub async fn metadata(&self) -> Result<&Metadata> {
-    //     match self.meta.get() {
-    //         Some(meta) => Ok(meta),
-    //         None => {
-    //             let meta = self.backend.metadata().await?;
-    //             // self.meta.set(meta).expect("unset");
-    //             Ok(self.meta.get().unwrap())
-    //         }
-    //     }
-    // }
+	// /// Get the chain metadata and cache it for future calls
+	// pub async fn metadata(&self) -> Result<&Metadata> {
+	//     match self.meta.get() {
+	//         Some(meta) => Ok(meta),
+	//         None => {
+	//             let meta = self.backend.metadata().await?;
+	//             // self.meta.set(meta).expect("unset");
+	//             Ok(self.meta.get().unwrap())
+	//         }
+	//     }
+	// }
 }
 
 impl<B: Backend> From<B> for Sube<B> {
-    fn from(b: B) -> Self {
-        Sube::new(b)
-    }
+	fn from(b: B) -> Self {
+		Sube::new(b)
+	}
 }
 
 impl<T: Backend> Deref for Sube<T> {
-    type Target = T;
+	type Target = T;
 
-    fn deref(&self) -> &Self::Target {
-        &self.backend
-    }
+	fn deref(&self) -> &Self::Target {
+		&self.backend
+	}
 }
 
 /// Generic definition of a blockchain backend
@@ -110,15 +112,21 @@ impl<T: Backend> Deref for Sube<T> {
 /// ```
 #[async_trait]
 pub trait Backend {
-    /// Get raw storage items form the blockchain
-    async fn query_storage(&self, key: &[u8]) -> crate::Result<Vec<u8>>;
+	/// Get raw storage items form the blockchain
+	async fn query_storage(&self, key: &[u8], as_of: Option<&[u8]>) -> crate::Result<Vec<u8>>;
 
-    /// Send a signed extrinsic to the blockchain
-    // async fn submit<T>(&self, ext: T) -> Result<()>
-    // where
-    //     T: AsRef<[u8]> + Send;
+	/// Get block hash for block number
+	async fn query_block_hash(&self, block_number: &[u32]) -> crate::Result<Vec<u8>>;
 
-    async fn metadata(&self, as_of: Option<&[u8]>) -> crate::Result<Vec<u8>>;
+    /// Get block for block hash
+    async fn query_block(&self, block_hash: &str) -> crate::Result<Vec<u8>>;
+
+	/// Send a signed extrinsic to the blockchain
+	// async fn submit<T>(&self, ext: T) -> Result<()>
+	// where
+	//     T: AsRef<[u8]> + Send;
+
+	async fn query_metadata(&self, as_of: Option<&[u8]>) -> crate::Result<Vec<u8>>;
 }
 
 /// A Dummy backend for offline querying of metadata
@@ -126,48 +134,55 @@ pub struct Offline(pub Vec<u8>);
 
 #[async_trait]
 impl Backend for Offline {
-    async fn query_storage(&self, _key: &[u8]) -> Result<Vec<u8>> {
+	async fn query_storage(&self, _key: &[u8], _as_of: Option<&[u8]>) -> Result<Vec<u8>> {
+		Err(Error::ChainUnavailable)
+	}
+
+	// /// Send a signed extrinsic to the blockchain
+	// async fn submit<T>(&self, _ext: T) -> Result<()>
+	// where
+	//     T: AsRef<[u8]> + Send,
+	// {
+	//     Err(Error::ChainUnavailable)
+	// }
+
+	async fn query_block_hash(&self, _block_number: &[u32]) -> crate::Result<Vec<u8>> {
+		Err(Error::ChainUnavailable)
+	}
+
+    async fn query_block(&self, _block_hash: &str) -> crate::Result<Vec<u8>> {
         Err(Error::ChainUnavailable)
     }
 
-    // /// Send a signed extrinsic to the blockchain
-    // async fn submit<T>(&self, _ext: T) -> Result<()>
-    // where
-    //     T: AsRef<[u8]> + Send,
-    // {
-    //     Err(Error::ChainUnavailable)
-    // }
-
-    async fn metadata(&self, _as_of: Option<&[u8]>) -> Result<Vec<u8>> {
-        Ok(self.0.clone())
-    }
-
+	async fn query_metadata(&self, _as_of: Option<&[u8]>) -> Result<Vec<u8>> {
+		Ok(self.0.clone())
+	}
 }
 
 #[derive(Clone, Debug)]
 pub enum Error {
-    ChainUnavailable,
-    BadInput,
-    BadKey,
-    Node(String),
-    ParseStorageItem,
-    StorageKeyNotFound,
+	ChainUnavailable,
+	BadInput,
+	BadKey,
+	Node(String),
+	ParseStorageItem,
+	StorageKeyNotFound,
 }
 
 impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Node(e) => write!(f, "{:}", e),
-            _ => write!(f, "{:?}", self),
-        }
-    }
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			Self::Node(e) => write!(f, "{:}", e),
+			_ => write!(f, "{:?}", self),
+		}
+	}
 }
 
 #[cfg(feature = "ws")]
 impl From<async_tungstenite::tungstenite::Error> for Error {
-    fn from(_err: async_tungstenite::tungstenite::Error) -> Self {
-        Error::ChainUnavailable
-    }
+	fn from(_err: async_tungstenite::tungstenite::Error) -> Self {
+		Error::ChainUnavailable
+	}
 }
 
 #[cfg(feature = "std")]

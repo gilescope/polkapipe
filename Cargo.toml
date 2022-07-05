@@ -27,6 +27,7 @@ async-std = { version = "1.10.0", default_features = false, optional = true }
 [dev-dependencies]
 async-std = { version = "1.10.0", features = ["attributes"] }
 hex-literal = "0.3.3"
+env_logger = "*"
 
 [features]
 default = ["std", "ws"]
