@@ -1,17 +1,21 @@
 use async_trait::async_trait;
 use jsonrpc::serde_json::value::RawValue;
 pub use jsonrpc::{error, Error, Request, Response};
-
 // use crate::meta::{self, Metadata};
 use crate::{prelude::*, Backend};
 pub type RpcResult = Result<Vec<u8>, error::Error>;
-
+use jsonrpc::error::RpcError;
 /// Rpc defines types of backends that are remote and talk JSONRpc
 #[async_trait]
 pub trait Rpc: Backend + Send + Sync {
 	async fn rpc(&self, method: &str, params: Vec<Box<RawValue>>) -> RpcResult;
 
-	async fn rpc_single(&self, method: &str, params: Box<RawValue>) -> RpcResult;
+	/// Returns in json format rather than bytes.
+	async fn rpc_single(
+		&self,
+		method: &str,
+		params: Box<RawValue>,
+	) -> Result<serde_json::value::Value, RpcError>;
 
 	fn convert_params(params: &[&str]) -> Vec<Box<RawValue>> {
 		params
@@ -44,9 +48,9 @@ impl<R: Rpc> Backend for R {
 	}
 
 	async fn query_block_hash(&self, block_numbers: &[u32]) -> crate::Result<Vec<u8>> {
-		let num : Vec<_> = block_numbers.iter().map(|i|i.to_string()).collect();
+		let num: Vec<_> = block_numbers.iter().map(|i| i.to_string()).collect();
 		// let params = block_numbers;/
-		let n: Vec<_> = num.iter().map(|i|i.as_str()).collect();
+		let n: Vec<_> = num.iter().map(|i| i.as_str()).collect();
 
 		self.rpc("chain_getBlockHash", Self::convert_params(&n)).await.map_err(|e| {
 			log::debug!("RPC failure: {}", &e);
@@ -54,16 +58,45 @@ impl<R: Rpc> Backend for R {
 		})
 	}
 
-	async fn query_block(&self, block_hash_in_hex: &str) -> crate::Result<Vec<u8>> {
+	async fn query_block(
+		&self,
+		block_hash_in_hex: &str,
+	) -> crate::Result<serde_json::value::Value> {
 		// let hash = hex::encode(block_hash);
 		// let params = vec![block_hash_in_hex];
 
-		self.rpc_single("chain_getBlock", RawValue::from_string(format!("\"{}\"", block_hash_in_hex)).unwrap()).await.map_err(|e| {
-			log::debug!("RPC failure: {}", &e);
-			crate::Error::Node(e.to_string())
+		// let val =
+		self.rpc_single(
+			"chain_getBlock",
+			RawValue::from_string(format!("\"{}\"", block_hash_in_hex)).unwrap(),
+		)
+		.await
+		// println!("got here1");
+		// if let Ok(serde_json::value::Value::Object(map)) = val {
+		// 	println!("got 2here");
+		// 	if let Some(serde_json::value::Value::Object(map)) = map.get("block") {
+		// 		if let Some(serde_json::value::Value::Object(m)) = map.get("header") {
+		// 			let num = m.get("number");
+		// 			let bytes = hex::decode(num).unwrap();
+		// 			let number: u32 = bytes.decode();
+		// 			result.block_number = number;
+		// 		}
+		// 		if let Some(serde_json::value::Value::Array(extrinsics)) = map.get("extrinsics") {
+		// 			for ex in extrinsics {
+		// 				result.extrinsics.push(ex);
+		// 			}
+		// 				// println!("got 4here aa{}", extrinsics.len());
+		// 		}
+		// 	}
+		// }
+		.map_err(|e| {
+			// log::debug!("RPC failure: {}", &e);
+			crate::Error::Node(e.message)
 		})
-	}
 
+		//		val.result,block.extrinsics
+		// Ok(result)
+	}
 
 	// async fn submit<T>(&self, ext: T) -> crate::Result<()>
 	// where

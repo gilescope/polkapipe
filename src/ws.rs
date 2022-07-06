@@ -1,4 +1,4 @@
-use crate::prelude::*;
+use crate::{prelude::*, ws::serde_json::value::RawValue};
 use alloc::{collections::BTreeMap, sync::Arc};
 use async_mutex::Mutex;
 use async_std::task;
@@ -10,9 +10,8 @@ use futures_util::{
 	stream::SplitSink,
 	Stream, StreamExt,
 };
-use crate::ws::serde_json::value::RawValue;
 use jsonrpc::{
-	error::{result_to_response, standard_error, StandardError},
+	error::{result_to_response, standard_error, RpcError, StandardError},
 	serde_json,
 };
 
@@ -64,7 +63,11 @@ where
 		Ok(res)
 	}
 
-    async fn rpc_single(&self, method: &str, params: Box<RawValue>) -> RpcResult {
+	async fn rpc_single(
+		&self,
+		method: &str,
+		params: Box<RawValue>,
+	) -> Result<serde_json::value::Value, RpcError> {
 		let id = self.next_id().await;
 		log::info!("RPC `{}` (ID={})", method, id);
 
@@ -74,9 +77,13 @@ where
 		messages.lock().await.insert(id, sender);
 
 		// send rpc request
-        // example working request: {"method":"chain_getBlockHash","params":["1"],"id":1,"jsonrpc":"2.0"}
-		let msg = format!("{{\"id\":{}, \"jsonrpc\": \"2.0\", \"method\":\"{}\", \"params\":[{}]}}", id, method, params);
-		
+		// example working request:
+		// {"method":"chain_getBlockHash","params":["1"],"id":1,"jsonrpc":"2.0"}
+		let msg = format!(
+			"{{\"id\":{}, \"jsonrpc\": \"2.0\", \"method\":\"{}\", \"params\":[{}]}}",
+			id, method, params
+		);
+
 		log::debug!("RPC Request {} ...", &msg);
 		let _ = self.tx.lock().await.send(Message::Text(msg)).await;
 
@@ -84,9 +91,7 @@ where
 		let res = recv
 			.await
 			.map_err(|_| standard_error(StandardError::InternalError, None))?
-			.result::<String>()?;
-		log::debug!("RPC Response: {}...", &res[..res.len().min(20)]);
-		let res = hex::decode(&res[2..])
+			.result::<serde_json::value::Value>()
 			.map_err(|_| standard_error(StandardError::InternalError, None))?;
 		Ok(res)
 	}
@@ -206,7 +211,8 @@ mod tests {
 
 	#[test]
 	fn can_get_metadata() {
-		let latest_metadata = async_std::task::block_on(polkadot_backend().query_metadata(None)).unwrap();
+		let latest_metadata =
+			async_std::task::block_on(polkadot_backend().query_metadata(None)).unwrap();
 		assert!(latest_metadata.len() > 0);
 	}
 
@@ -216,14 +222,15 @@ mod tests {
 			hex::decode("e33568bff8e6f30fee6f217a93523a6b29c31c8fe94c076d818b97b97cfd3a16")
 				.unwrap();
 		let as_of_metadata =
-			async_std::task::block_on(polkadot_backend().query_metadata(Some(&block_hash))).unwrap();
+			async_std::task::block_on(polkadot_backend().query_metadata(Some(&block_hash)))
+				.unwrap();
 		assert!(as_of_metadata.len() > 0);
 	}
 
 	#[test]
 	fn can_get_block_hash() {
-           env_logger::init();
-		let hash = async_std::task::block_on(polkadot_backend().query_block_hash(&vec![1])).unwrap();
+		let hash =
+			async_std::task::block_on(polkadot_backend().query_block_hash(&vec![1])).unwrap();
 		assert_eq!(
 			"c0096358534ec8d21d01d34b836eed476a1c343f8724fa2153dc0725ad797a90",
 			hex::encode(hash)
@@ -232,11 +239,9 @@ mod tests {
 
 	#[test]
 	fn can_get_full_block() {
-        env_logger::init();
-        let hash = "c191b96685aad1250b47d6bc2e95392e3a200eaa6dca8bccfaa51cfd6d558a6a";
+		let hash = "c191b96685aad1250b47d6bc2e95392e3a200eaa6dca8bccfaa51cfd6d558a6a";
 		let block_bytes = async_std::task::block_on(polkadot_backend().query_block(hash)).unwrap();
-		assert!(block_bytes.len() > 0);
-        println!("fin");
+		assert!(matches!(block_bytes, serde_json::value::Value::Object(_)));
 	}
 
 	#[test]
@@ -248,9 +253,10 @@ mod tests {
 		let events_key = "26aa394eea5630e07c48ae0c9558cef780d41e5e16056765bc8461851072c9d7";
 		let key = hex::decode(events_key).unwrap();
 
-		let as_of_events =
-			async_std::task::block_on(polkadot_backend().query_storage(&key[..], Some(&block_hash))).unwrap();
-		println!("{:?}", as_of_events);
+		let as_of_events = async_std::task::block_on(
+			polkadot_backend().query_storage(&key[..], Some(&block_hash)),
+		)
+		.unwrap();
 		assert!(as_of_events.len() > 0);
 	}
 }
