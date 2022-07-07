@@ -17,10 +17,20 @@ pub trait Rpc: Backend + Send + Sync {
 		params: Box<RawValue>,
 	) -> Result<serde_json::value::Value, RpcError>;
 
-	fn convert_params(params: &[&str]) -> Vec<Box<RawValue>> {
+	fn convert_params_to_strings(params: &[&str]) -> Vec<Box<RawValue>> {
 		params
 			.iter()
 			.map(|p| format!("\"{}\"", p))
+			.map(RawValue::from_string)
+			.map(Result::unwrap)
+			.collect::<Vec<_>>()
+	}
+
+	fn convert_params_raw(params: &[&str]) -> Vec<Box<RawValue>> {
+		params
+			.iter()
+			/* /*  */.map(|p| format!("\"{}\"", p)) */
+			.map(|p| p.to_string()) // TODO alloc less
 			.map(RawValue::from_string)
 			.map(Result::unwrap)
 			.collect::<Vec<_>>()
@@ -43,10 +53,12 @@ impl<R: Rpc> Backend for R {
 
 		if as_of.is_some() {
 			// state_queryStorageAt
-			self.rpc("state_getStorage", Self::convert_params(&params)).await.map_err(|e| {
-				log::debug!("RPC failure: {}", &e);
-				crate::Error::Node(e.to_string())
-			})
+			self.rpc("state_getStorage", Self::convert_params_to_strings(&params))
+				.await
+				.map_err(|e| {
+					log::debug!("RPC failure: {}", &e);
+					crate::Error::Node(e.to_string())
+				})
 		} else {
 			let value = self
 				.rpc_single(
@@ -73,7 +85,7 @@ impl<R: Rpc> Backend for R {
 		// let params = block_numbers;/
 		let n: Vec<_> = num.iter().map(|i| i.as_str()).collect();
 
-		self.rpc("chain_getBlockHash", Self::convert_params(&n)).await.map_err(|e| {
+		self.rpc("chain_getBlockHash", Self::convert_params_raw(&n)).await.map_err(|e| {
 			log::debug!("RPC failure: {}", &e);
 			crate::Error::Node(e.to_string())
 		})
@@ -143,7 +155,7 @@ impl<R: Rpc> Backend for R {
 			vec![]
 		};
 		let meta = self
-			.rpc("state_getMetadata", Self::convert_params(&params[..]))
+			.rpc("state_getMetadata", Self::convert_params_to_strings(&params[..]))
 			.await
 			.map_err(|e| crate::Error::Node(e.to_string()))?;
 

@@ -215,10 +215,17 @@ mod tests {
 
 	#[test]
 	fn can_get_block_hash() {
-		let hash =
-			async_std::task::block_on(polkadot_backend().query_block_hash(&vec![1])).unwrap();
+		env_logger::init();
+		let polkadot = polkadot_backend();
+		let hash = async_std::task::block_on(polkadot.query_block_hash(&vec![1])).unwrap();
 		assert_eq!(
 			"c0096358534ec8d21d01d34b836eed476a1c343f8724fa2153dc0725ad797a90",
+			hex::encode(hash)
+		);
+
+		let hash = async_std::task::block_on(polkadot.query_block_hash(&vec![10504599])).unwrap();
+		assert_eq!(
+			"e33568bff8e6f30fee6f217a93523a6b29c31c8fe94c076d818b97b97cfd3a16",
 			hex::encode(hash)
 		);
 	}
@@ -253,7 +260,7 @@ mod tests {
 		let key = "0d715f2646c8f85767b5d2764bb2782604a74d81251e398fd8a0a4d55023bb3f";
 		let key = hex::decode(key).unwrap();
 		let parachain = async_std::task::block_on(crate::ws::Backend::new_ws2(
-			"wss://statemint-rpc.polkadot.io",
+			"wss://calamari-rpc.dwellir.com",
 		))
 		.unwrap();
 
