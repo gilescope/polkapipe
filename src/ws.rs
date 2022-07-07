@@ -185,27 +185,13 @@ impl Backend<WS2> {
 mod tests {
 	use crate::{
 		ws,
-		ws::{Message, SplitSink},
+		ws::{Message, SplitSink, WS2},
 		Backend, Error,
 	};
 	use async_tungstenite::WebSocketStream;
 	use futures_util::sink::SinkErrInto;
 
-	fn polkadot_backend() -> ws::Backend<
-		SinkErrInto<
-			SplitSink<
-				WebSocketStream<
-					async_tungstenite::stream::Stream<
-						async_std::net::TcpStream,
-						async_tls::client::TlsStream<async_std::net::TcpStream>,
-					>,
-				>,
-				Message,
-			>,
-			Message,
-			Error,
-		>,
-	> {
+	fn polkadot_backend() -> ws::Backend<WS2> {
 		async_std::task::block_on(crate::ws::Backend::new_ws2("wss://rpc.polkadot.io")).unwrap()
 	}
 
@@ -246,6 +232,7 @@ mod tests {
 
 	#[test]
 	fn can_get_storage_as_of() {
+		env_logger::init();
 		let block_hash =
 			hex::decode("e33568bff8e6f30fee6f217a93523a6b29c31c8fe94c076d818b97b97cfd3a16")
 				.unwrap();
@@ -258,5 +245,21 @@ mod tests {
 		)
 		.unwrap();
 		assert!(as_of_events.len() > 0);
+	}
+
+	#[test]
+	fn can_get_storage_now() {
+		env_logger::init();
+		let key = "0d715f2646c8f85767b5d2764bb2782604a74d81251e398fd8a0a4d55023bb3f";
+		let key = hex::decode(key).unwrap();
+		let parachain = async_std::task::block_on(crate::ws::Backend::new_ws2(
+			"wss://statemint-rpc.polkadot.io",
+		))
+		.unwrap();
+
+		let as_of_events =
+			async_std::task::block_on(parachain.query_storage(&key[..], None)).unwrap();
+		assert_eq!(hex::decode("e8030000").unwrap(), as_of_events);
+		// This is statemint's scale encoded parachain id (1000)
 	}
 }

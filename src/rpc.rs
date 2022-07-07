@@ -29,6 +29,7 @@ pub trait Rpc: Backend + Send + Sync {
 
 #[async_trait]
 impl<R: Rpc> Backend for R {
+	//state_queryStorage for multiple keys over a hash range.
 	async fn query_storage(&self, key: &[u8], as_of: Option<&[u8]>) -> crate::Result<Vec<u8>> {
 		let key = hex::encode(key);
 		log::debug!("StorageKey encoded: {}", key);
@@ -40,11 +41,31 @@ impl<R: Rpc> Backend for R {
 			vec![key.as_str()]
 		};
 
-		// state_queryStorageAt
-		self.rpc("state_getStorage", Self::convert_params(&params)).await.map_err(|e| {
-			log::debug!("RPC failure: {}", &e);
-			crate::Error::Node(e.to_string())
-		})
+		if as_of.is_some() {
+			// state_queryStorageAt
+			self.rpc("state_getStorage", Self::convert_params(&params)).await.map_err(|e| {
+				log::debug!("RPC failure: {}", &e);
+				crate::Error::Node(e.to_string())
+			})
+		} else {
+			let value = self
+				.rpc_single(
+					"state_getStorage",
+					RawValue::from_string(format!("\"0x{}\"", key)).unwrap(),
+				)
+				.await
+				.map_err(|e| {
+					/* /*  */log::debug!("RPC failure: {}", /*  */&e); */
+					crate::Error::Node(e.message.to_string())
+				});
+			value.map(|result| {
+				if let serde_json::value::Value::String(hex_scale) = result {
+					return hex::decode(&hex_scale[2..]).unwrap()
+				} else {
+					panic!("{:?}", result)
+				}
+			})
+		}
 	}
 
 	async fn query_block_hash(&self, block_numbers: &[u32]) -> crate::Result<Vec<u8>> {
