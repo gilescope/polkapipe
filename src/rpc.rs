@@ -6,7 +6,8 @@ use crate::{prelude::*, Backend};
 pub type RpcResult = Result<Vec<u8>, error::Error>;
 use jsonrpc::error::RpcError;
 /// Rpc defines types of backends that are remote and talk JSONRpc
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 pub trait Rpc: Backend + Send + Sync {
 	async fn rpc(&self, method: &str, params: Vec<Box<RawValue>>) -> RpcResult;
 
@@ -37,7 +38,8 @@ pub trait Rpc: Backend + Send + Sync {
 	}
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl<R: Rpc> Backend for R {
 	//state_queryStorage for multiple keys over a hash range.
 	async fn query_storage(&self, key: &[u8], as_of: Option<&[u8]>) -> crate::Result<Vec<u8>> {
