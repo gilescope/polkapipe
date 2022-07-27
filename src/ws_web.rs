@@ -39,9 +39,10 @@ use
    futures              :: stream::StreamExt        ,
 };
 
+#[derive(Clone)]
 pub struct Backend {
-	tx: Mutex<SplitSink<WsStream, ws_stream_wasm::WsMessage>>,
-	rx: Mutex<SplitStream<WsStream>>,
+	tx: Arc<Mutex<SplitSink<WsStream, ws_stream_wasm::WsMessage>>>,
+	rx: Arc<Mutex<SplitStream<WsStream>>>,
 	messages: Arc<Mutex<BTreeMap<Id, oneshot::Sender<rpc::Response>>>>,
 }
 
@@ -175,8 +176,8 @@ impl Backend {
 
    
 		let backend = Backend {
-			tx: Mutex::new(tx),
-			rx: Mutex::new(rx),
+			tx: Arc::new(Mutex::new(tx)),
+			rx: Arc::new(Mutex::new(rx)),
 			messages: Arc::new(Mutex::new(BTreeMap::new())),
 		};
 
@@ -191,7 +192,7 @@ impl Backend {
 		// Rx: Stream<Item = core::result::Result<Message, WsError>> + Unpin + Send + 'static,
 			// Rx: Stream<Item = Message> + Unpin + Send + 'static,
 	{
-		let mut rx = &mut *self.rx.lock().await;
+		let rx = &mut *self.rx.lock().await;
 		let messages = self.messages.clone();
 
 		// task::spawn(async move {
