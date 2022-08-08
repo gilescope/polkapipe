@@ -87,10 +87,12 @@ impl<R: Rpc> Backend for R {
 		// let params = block_numbers;/
 		let n: Vec<_> = num.iter().map(|i| i.as_str()).collect();
 
-		self.rpc("chain_getBlockHash", Self::convert_params_raw(&n)).await.map_err(|e| {
-			log::debug!("RPC failure: {}", &e);
+		let res = self.rpc("chain_getBlockHash", Self::convert_params_raw(&n)).await.map_err(|e| {
+			log::warn!("RPC failure: {}", &e);
 			crate::Error::Node(e.to_string())
-		})
+		});
+		log::info!("query_block_hash finished.");
+		res
 	}
 
 	async fn query_block(

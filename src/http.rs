@@ -21,11 +21,11 @@ impl Backend {
 		Backend(url.try_into().expect("Url"))
 	}
 }
-use serde_json::value::RawValue;
 use jsonrpc::{
 	error::{result_to_response, RpcError},
 	serde_json,
 };
+use serde_json::value::RawValue;
 #[async_trait]
 impl Rpc for Backend {
 	/// HTTP based JSONRpc request expecting an hex encoded result
@@ -72,11 +72,11 @@ impl Rpc for Backend {
 		// Ok(response)
 	}
 
-	 async fn rpc_single(
-        &self,
-        method: &str,
-      params: Box<RawValue>,
-     ) -> Result<serde_json::value::Value, RpcError> {
-	panic!()
-}
+	async fn rpc_single(
+		&self,
+		method: &str,
+		params: Box<RawValue>,
+	) -> Result<serde_json::value::Value, RpcError> {
+		panic!()
+	}
 }

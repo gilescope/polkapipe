@@ -55,7 +55,7 @@ pub mod http;
 pub mod ws;
 
 /// Tungstenite based backend
-#[cfg(all(feature = "ws-web", target_arch="wasm32"))]
+#[cfg(all(feature = "ws-web", target_arch = "wasm32"))]
 pub mod ws_web;
 
 mod rpc;
