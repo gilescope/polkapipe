@@ -34,7 +34,7 @@ where
 {
 	async fn rpc(&self, method: &str, params: Vec<Box<RawValue>>) -> RpcResult {
 		let id = self.next_id().await;
-		log::info!("RPC `{}` (ID={})", method, id);
+		log::trace!("RPC `{}` (ID={})", method, id);
 
 		// Store a sender that will notify our receiver when a matching message arrives
 		let (sender, recv) = oneshot::channel::<rpc::Response>();
@@ -69,7 +69,7 @@ where
 		params: Box<RawValue>,
 	) -> Result<serde_json::value::Value, RpcError> {
 		let id = self.next_id().await;
-		log::info!("RPC `{}` (ID={})", method, id);
+		log::trace!("RPC `{}` (ID={})", method, id);
 
 		// Store a sender that will notify our receiver when a matching message arrives
 		let (sender, recv) = oneshot::channel::<rpc::Response>();

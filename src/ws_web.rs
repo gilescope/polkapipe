@@ -38,7 +38,7 @@ impl Rpc for Backend
 {
 	async fn rpc(&self, method: &str, params: Vec<Box<RawValue>>) -> RpcResult {
 		let id = self.next_id().await;
-		log::info!("RPC normal `{}` (ID={})", method, id);
+		log::trace!("RPC normal `{}` (ID={})", method, id);
 
 		// Store a sender that will notify our receiver when a matching message arrives
 		let (sender, recv) = oneshot::channel::<rpc::Response>();
@@ -53,12 +53,12 @@ impl Rpc for Backend
 			params: &params,
 		})
 		.expect("Request is serializable");
-		log::info!("RPC Request {} ...", &msg[..50]);
+		log::trace!("RPC Request {} ...", &msg[..50]);
 		let mut lock = self.stream.lock().await;
-		log::info!("RPC got lock now sending {} ...", &msg[..50]);		
+		log::trace!("RPC got lock now sending {} ...", &msg[..50]);		
 		let _ = lock.send(Message::Text(msg)).await;
 		// drop(lock);
-		log::info!("RPC now waiting for response ...");
+		log::trace!("RPC now waiting for response ...");
 		// wait for the matching response to arrive
 		// let res = recv
 		// 	.await
@@ -73,9 +73,9 @@ impl Rpc for Backend
 		while let res = lock.next().await {
 			//TODO might be picked up by someone else...
 			if let Some(msg) = res {
-				log::info!("Got WS message {:?}", msg);
+				log::trace!("Got WS message {:?}", msg);
 				if let Message::Text(msg) = msg {
-					log::info!("{:#?}", msg);
+					log::trace!("{:#?}", msg);
 					let res: rpc::Response = serde_json::from_str(&msg).unwrap_or_else(|_| {
 						result_to_response(
 							Err(standard_error(StandardError::ParseError, None)),
@@ -84,7 +84,7 @@ impl Rpc for Backend
 					});
 					if res.id.is_u64() {
 						let res_id = res.id.as_u64().unwrap() as Id;
-						log::info!("Answering request {}", res_id);
+						log::trace!("Answering request {}", res_id);
 						if res_id == id {							
 							return Ok(res.result::<String>()
 							.map(|s| hex::decode(&s[2..]))
@@ -102,7 +102,7 @@ impl Rpc for Backend
 					}
 				}
 			} else {
-				log::info!("Got WS error: {:?}", res);
+				log::error!("Got WS error: {:?}", res);
 			}
 		}
 
@@ -123,7 +123,7 @@ impl Rpc for Backend
 		params: Box<RawValue>,
 	) -> Result<serde_json::value::Value, RpcError> {
 		let id = self.next_id().await;
-		log::info!("RPC single `{}` (ID={})", method, id);
+		log::trace!("RPC single `{}` (ID={})", method, id);
 
 		// Store a sender that will notify our receiver when a matching message arrives
 		let (sender, recv) = oneshot::channel::<rpc::Response>();
@@ -138,15 +138,15 @@ impl Rpc for Backend
 			id, method, params
 		);
 
-		log::info!("RPC Request {} ...", &msg);
+		log::trace!("RPC Request {} ...", &msg);
 		let _ = self.stream.lock().await.send(Message::Text(msg)).await;
 
 		while let res = self.stream.lock().await.next().await {
 			//TODO might be picked up by someone else...
 			if let Some(msg) = res {
-				log::info!("Got WS message {:?}", msg);
+				log::trace!("Got WS message {:?}", msg);
 				if let Message::Text(msg) = msg {
-					log::info!("{:#?}", msg);
+					log::trace!("{:#?}", msg);
 					let res: rpc::Response = serde_json::from_str(&msg).unwrap_or_else(|_| {
 						result_to_response(
 							Err(standard_error(StandardError::ParseError, None)),
@@ -155,7 +155,7 @@ impl Rpc for Backend
 					});
 					if res.id.is_u64() {
 						let res_id = res.id.as_u64().unwrap() as Id;
-						log::info!("Answering request {}", res_id);
+						log::trace!("Answering request {}", res_id);
 						if res_id == id {
 							return Ok(res.result::<serde_json::value::Value>()
 							.map_err(|_| standard_error(StandardError::InternalError, None))?);
@@ -170,7 +170,7 @@ impl Rpc for Backend
 					}
 				}
 			} else {
-				log::info!("Got WS error: {:?}", res);
+				log::error!("Got WS error: {:?}", res);
 			}
 		}
 
