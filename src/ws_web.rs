@@ -1,6 +1,7 @@
 use alloc::{boxed::Box, collections::BTreeMap, string::String, sync::Arc, vec::Vec};
 use async_std::sync::Mutex;
 use async_trait::async_trait;
+use core::time::Duration;
 use futures::{
 	stream::{SplitSink, SplitStream, StreamExt},
 	SinkExt,
@@ -27,7 +28,7 @@ type Id = u8;
 pub struct Backend {
 	stream: Arc<Mutex<WsStream>>,
 	wsmeta: Arc<Mutex<WsMeta>>,
-	messages: Arc<Mutex<BTreeMap<Id, oneshot::Sender<rpc::Response>>>>,
+	// messages: Arc<Mutex<BTreeMap<Id, oneshot::Sender<rpc::Response>>>>,
 }
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
@@ -37,13 +38,14 @@ impl Rpc for Backend
 // 	Tx: Sink<Message, Error = Error> + Unpin + Send,
 {
 	async fn rpc(&self, method: &str, params: Vec<Box<RawValue>>) -> RpcResult {
-		let id = self.next_id().await;
-		log::trace!("RPC normal `{}` (ID={})", method, id);
+		// let id = self.next_id().await;
+		let id = 1; //TODO: we can do better
+		log::trace!("RPC normal `{}`", method);
 
 		// Store a sender that will notify our receiver when a matching message arrives
-		let (sender, recv) = oneshot::channel::<rpc::Response>();
-		let messages = self.messages.clone();
-		messages.lock().await.insert(id, sender);
+		// let (sender, recv) = oneshot::channel::<rpc::Response>();
+		// let messages = self.messages.clone();
+		// messages.lock().await.insert(id, sender);
 
 		// send rpc request
 		let msg = serde_json::to_string(&rpc::Request {
@@ -54,9 +56,11 @@ impl Rpc for Backend
 		})
 		.expect("Request is serializable");
 		log::trace!("RPC Request {} ...", &msg[..50]);
-		let mut lock = self.stream.lock().await;
-		log::trace!("RPC got lock now sending {} ...", &msg[..50]);		
-		let _ = lock.send(Message::Text(msg)).await;
+		{
+			let mut lock = self.stream.lock().await;
+			log::trace!("RPC got lock now sending {} ...", &msg[..50]);		
+			let _ = lock.send(Message::Text(msg)).await;
+		}
 		// drop(lock);
 		log::trace!("RPC now waiting for response ...");
 		// wait for the matching response to arrive
@@ -69,8 +73,7 @@ impl Rpc for Backend
 		// 	.map_err(|_| standard_error(StandardError::InternalError, None))?;
 		// Ok(res)
 
-
-		while let res = lock.next().await {
+		while let res = self.stream.lock().await.next().await {
 			//TODO might be picked up by someone else...
 			if let Some(msg) = res {
 				log::trace!("Got WS message {:?}", msg);
@@ -93,16 +96,18 @@ impl Rpc for Backend
 						);
 						} else {
 							todo!("laters");
-							let mut messages = messages.lock().await;
-							if let Some(channel) = messages.remove(&res_id) {
-								// channel.send(res).expect("receiver waiting");
-								log::debug!("Answered request id: {}", res_id);
-							}
+							// let mut messages = messages.lock().await;
+							// if let Some(channel) = messages.remove(&res_id) {
+							// 	// channel.send(res).expect("receiver waiting");
+							// 	log::debug!("Answered request id: {}", res_id);
+							// }
 						}
 					}
 				}
 			} else {
 				log::error!("Got WS error: {:?}", res);
+				// If you're getting errors, slow down.
+				async_std::task::sleep(Duration::from_secs(2)).await
 			}
 		}
 
@@ -122,13 +127,14 @@ impl Rpc for Backend
 		method: &str,
 		params: Box<RawValue>,
 	) -> Result<serde_json::value::Value, RpcError> {
-		let id = self.next_id().await;
-		log::trace!("RPC single `{}` (ID={})", method, id);
+		// let id = self.next_id().await;
+		let id = 1;
+		log::trace!("RPC single `{}`", method);
 
 		// Store a sender that will notify our receiver when a matching message arrives
-		let (sender, recv) = oneshot::channel::<rpc::Response>();
-		let messages = self.messages.clone();
-		messages.lock().await.insert(id, sender);
+		// let (sender, recv) = oneshot::channel::<rpc::Response>();
+		// let messages = self.messages.clone();
+		// messages.lock().await.insert(id, sender);
 
 		// send rpc request
 		// example working request:
@@ -139,7 +145,9 @@ impl Rpc for Backend
 		);
 
 		log::trace!("RPC Request {} ...", &msg);
-		let _ = self.stream.lock().await.send(Message::Text(msg)).await;
+		{
+			let _ = self.stream.lock().await.send(Message::Text(msg)).await;
+		}
 
 		while let res = self.stream.lock().await.next().await {
 			//TODO might be picked up by someone else...
@@ -161,16 +169,18 @@ impl Rpc for Backend
 							.map_err(|_| standard_error(StandardError::InternalError, None))?);
 						} else {
 							todo!("laters");
-							let mut messages = messages.lock().await;
-							if let Some(channel) = messages.remove(&res_id) {
-								// channel.send(res).expect("receiver waiting");
-								log::debug!("Answered request id: {}", res_id);
-							}
+							// let mut messages = messages.lock().await;
+							// if let Some(channel) = messages.remove(&res_id) {
+							// 	// channel.send(res).expect("receiver waiting");
+							// 	log::debug!("Answered request id: {}", res_id);
+							// }
 						}
 					}
 				}
 			} else {
 				log::error!("Got WS error: {:?}", res);
+				// If you're getting errors, slow down.
+				async_std::task::sleep(Duration::from_secs(2)).await
 			}
 		}
 
@@ -185,11 +195,11 @@ impl Rpc for Backend
 	}
 }
 
-impl Backend {
-	async fn next_id(&self) -> Id {
-		self.messages.lock().await.keys().last().unwrap_or(&0) + 1
-	}
-}
+// impl Backend {
+// 	async fn next_id(&self) -> Id {
+// 		self.messages.lock().await.keys().last().unwrap_or(&0) + 1
+// 	}
+// }
 
 //type WS2 = SplitSink<WsStream, ws_stream_wasm::WsMessage>;
 
@@ -205,7 +215,7 @@ impl Backend {
 			stream: Arc::new(Mutex::new(stream)),
 			wsmeta: Arc::new(Mutex::new(wsmeta)),
 			// rx: Arc::new(Mutex::new(rx)),
-			messages: Arc::new(Mutex::new(BTreeMap::new())),
+			// messages: Arc::new(Mutex::new(BTreeMap::new())),
 		};
 
 		info!("Connection successfully created");
