@@ -11,7 +11,7 @@ use jsonrpc::{
 	error::{result_to_response, standard_error, RpcError, StandardError},
 	serde_json,
 };
-use log::{info};
+use log::info;
 use serde_json::value::RawValue;
 use wasm_bindgen::UnwrapThrowExt;
 use ws_stream_wasm::*;
@@ -28,24 +28,14 @@ type Id = u8;
 pub struct Backend {
 	stream: Arc<Mutex<WsStream>>,
 	wsmeta: Arc<Mutex<WsMeta>>,
-	// messages: Arc<Mutex<BTreeMap<Id, oneshot::Sender<rpc::Response>>>>,
 }
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-impl Rpc for Backend
-// where
-// 	Tx: Sink<Message, Error = Error> + Unpin + Send,
-{
+impl Rpc for Backend {
 	async fn rpc(&self, method: &str, params: Vec<Box<RawValue>>) -> RpcResult {
-		// let id = self.next_id().await;
 		let id = 1; //TODO: we can do better
 		log::trace!("RPC normal `{}`", method);
-
-		// Store a sender that will notify our receiver when a matching message arrives
-		// let (sender, recv) = oneshot::channel::<rpc::Response>();
-		// let messages = self.messages.clone();
-		// messages.lock().await.insert(id, sender);
 
 		// send rpc request
 		let msg = serde_json::to_string(&rpc::Request {
@@ -58,20 +48,10 @@ impl Rpc for Backend
 		log::trace!("RPC Request {} ...", &msg[..50]);
 		{
 			let mut lock = self.stream.lock().await;
-			log::trace!("RPC got lock now sending {} ...", &msg[..50]);		
+			log::trace!("RPC got lock now sending {} ...", &msg[..50]);
 			let _ = lock.send(Message::Text(msg)).await;
 		}
-		// drop(lock);
 		log::trace!("RPC now waiting for response ...");
-		// wait for the matching response to arrive
-		// let res = recv
-		// 	.await
-		// 	.map_err(|_| standard_error(StandardError::InternalError, None))?
-		// 	.result::<String>()?;
-		// log::info!("RPC Response: {}...", &res[..res.len().min(20)]);
-		// let res = hex::decode(&res[2..])
-		// 	.map_err(|_| standard_error(StandardError::InternalError, None))?;
-		// Ok(res)
 
 		while let res = self.stream.lock().await.next().await {
 			//TODO might be picked up by someone else...
@@ -88,19 +68,14 @@ impl Rpc for Backend
 					if res.id.is_u64() {
 						let res_id = res.id.as_u64().unwrap() as Id;
 						log::trace!("Answering request {}", res_id);
-						if res_id == id {							
-							return Ok(res.result::<String>()
-							.map(|s| hex::decode(&s[2..]))
-							.map_err(|_| standard_error(StandardError::InternalError, None))?
-							.map_err(|_| standard_error(StandardError::InternalError, None))?
-						);
+						if res_id == id {
+							return Ok(res
+								.result::<String>()
+								.map(|s| hex::decode(&s[2..]))
+								.map_err(|_| standard_error(StandardError::InternalError, None))?
+								.map_err(|_| standard_error(StandardError::InternalError, None))?)
 						} else {
-							todo!("laters");
-							// let mut messages = messages.lock().await;
-							// if let Some(channel) = messages.remove(&res_id) {
-							// 	// channel.send(res).expect("receiver waiting");
-							// 	log::debug!("Answered request id: {}", res_id);
-							// }
+							todo!("At the moment a socket is only used in order");
 						}
 					}
 				}
@@ -111,15 +86,7 @@ impl Rpc for Backend
 			}
 		}
 
-		// wait for the matching response to arrive
-		// let res = recv
-		// 	.await
-		// 	.map_err(|_| standard_error(StandardError::InternalError, None))?
-		// 	.result::<serde_json::value::Value>()
-		// 	.map_err(|_| standard_error(StandardError::InternalError, None))?;
-		// Ok(res)
-		todo!("oops ");
-		// Err(standard_error(StandardError::InternalError, None))
+		Err(standard_error(StandardError::InternalError, None))
 	}
 
 	async fn rpc_single(
@@ -127,18 +94,9 @@ impl Rpc for Backend
 		method: &str,
 		params: Box<RawValue>,
 	) -> Result<serde_json::value::Value, RpcError> {
-		// let id = self.next_id().await;
-		let id = 1;
+		let id = 1; // TODO at the moment we are only sending requests serially
 		log::trace!("RPC single `{}`", method);
 
-		// Store a sender that will notify our receiver when a matching message arrives
-		// let (sender, recv) = oneshot::channel::<rpc::Response>();
-		// let messages = self.messages.clone();
-		// messages.lock().await.insert(id, sender);
-
-		// send rpc request
-		// example working request:
-		// {"method":"chain_getBlockHash","params":["1"],"id":1,"jsonrpc":"2.0"}
 		let msg = format!(
 			"{{\"id\":{}, \"jsonrpc\": \"2.0\", \"method\":\"{}\", \"params\":[{}]}}",
 			id, method, params
@@ -165,15 +123,11 @@ impl Rpc for Backend
 						let res_id = res.id.as_u64().unwrap() as Id;
 						log::trace!("Answering request {}", res_id);
 						if res_id == id {
-							return Ok(res.result::<serde_json::value::Value>()
-							.map_err(|_| standard_error(StandardError::InternalError, None))?);
+							return Ok(res
+								.result::<serde_json::value::Value>()
+								.map_err(|_| standard_error(StandardError::InternalError, None))?)
 						} else {
-							todo!("laters");
-							// let mut messages = messages.lock().await;
-							// if let Some(channel) = messages.remove(&res_id) {
-							// 	// channel.send(res).expect("receiver waiting");
-							// 	log::debug!("Answered request id: {}", res_id);
-							// }
+							todo!("At the moment a socket is only used in order");
 						}
 					}
 				}
@@ -184,24 +138,9 @@ impl Rpc for Backend
 			}
 		}
 
-		// wait for the matching response to arrive
-		// let res = recv
-		// 	.await
-		// 	.map_err(|_| standard_error(StandardError::InternalError, None))?
-		// 	.result::<serde_json::value::Value>()
-		// 	.map_err(|_| standard_error(StandardError::InternalError, None))?;
-		// Ok(res)
 		Err(standard_error(StandardError::InternalError, None))
 	}
 }
-
-// impl Backend {
-// 	async fn next_id(&self) -> Id {
-// 		self.messages.lock().await.keys().last().unwrap_or(&0) + 1
-// 	}
-// }
-
-//type WS2 = SplitSink<WsStream, ws_stream_wasm::WsMessage>;
 
 impl Backend {
 	pub async fn new_ws2(url: &str) -> core::result::Result<Self, Error> {
@@ -209,58 +148,16 @@ impl Backend {
 		let (wsmeta, stream) =
 			WsMeta::connect(url, None).await.expect_throw("assume the connection succeeds");
 
-		// let (tx, rx) = stream.split();
-
-		let backend = Backend {
-			stream: Arc::new(Mutex::new(stream)),
-			wsmeta: Arc::new(Mutex::new(wsmeta)),
-			// rx: Arc::new(Mutex::new(rx)),
-			// messages: Arc::new(Mutex::new(BTreeMap::new())),
-		};
+		let backend =
+			Backend { stream: Arc::new(Mutex::new(stream)), wsmeta: Arc::new(Mutex::new(wsmeta)) };
 
 		info!("Connection successfully created");
 
 		Ok(backend)
 	}
 
-	pub async fn process_incoming_messages(&self)
-	// where
-	// Rx: Stream<Item = core::result::Result<Message, WsError>> + Unpin + Send +
-	// 'static, Rx: Stream<Item = Message> + Unpin + Send + 'static,
-	{
-		// let rx = &mut *self.stream.lock().await;
-		// let messages = &self.messages;
-
-		// log::info!("checking incoming messages");
-		
-		// {
-		// 	let mut messages = messages.lock().await;
-		// 	log::info!("checking incoming messages - waiting on {}", (*messages).len());
-		// }
-		// let res = rx.next().await;
-		// if let Some(msg) = res {
-		// 	log::info!("Got WS message {:?}", msg);
-		// 	if let Message::Text(msg) = msg {
-		// 		log::info!("{:#?}", msg);
-		// 		let res: rpc::Response = serde_json::from_str(&msg).unwrap_or_else(|_| {
-		// 			result_to_response(
-		// 				Err(standard_error(StandardError::ParseError, None)),
-		// 				().into(),
-		// 			)
-		// 		});
-		// 		if res.id.is_u64() {
-		// 			let id = res.id.as_u64().unwrap() as Id;
-		// 			log::info!("Answering request {}", id);
-		// 			let mut messages = messages.lock().await;
-		// 			if let Some(channel) = messages.remove(&id) {
-		// 				channel.send(res).expect("receiver waiting");
-		// 				log::debug!("Answered request id: {}", id);
-		// 			}
-		// 		}
-		// 	}
-		// } else {
-		// 	log::info!("Got WS error: {:?}", res);
-		// }
+	pub async fn process_incoming_messages(&self) {
+		// Not needed as done inline at the moment.
 	}
 }
 
@@ -313,8 +210,7 @@ mod tests {
 			hex::decode("e33568bff8e6f30fee6f217a93523a6b29c31c8fe94c076d818b97b97cfd3a16")
 				.unwrap();
 		let as_of_metadata =
-			polkadot_backend().await.query_metadata(Some(&block_hash)).await
-				.unwrap();
+			polkadot_backend().await.query_metadata(Some(&block_hash)).await.unwrap();
 		assert!(as_of_metadata.len() > 0);
 	}
 
@@ -333,7 +229,7 @@ mod tests {
 			hex::encode(hash)
 		);
 
-		let hash =  polkadot.query_block_hash(&vec![10504599]).await.unwrap();
+		let hash = polkadot.query_block_hash(&vec![10504599]).await.unwrap();
 		assert_eq!(
 			"e33568bff8e6f30fee6f217a93523a6b29c31c8fe94c076d818b97b97cfd3a16",
 			hex::encode(hash)
@@ -367,10 +263,11 @@ mod tests {
 		let events_key = "26aa394eea5630e07c48ae0c9558cef780d41e5e16056765bc8461851072c9d7";
 		let key = hex::decode(events_key).unwrap();
 
-		let as_of_events = 
-			polkadot_backend().await.query_storage(&key[..], Some(&block_hash))
-		.await
-		.unwrap();
+		let as_of_events = polkadot_backend()
+			.await
+			.query_storage(&key[..], Some(&block_hash))
+			.await
+			.unwrap();
 		assert!(as_of_events.len() > 0);
 	}
 
@@ -384,13 +281,9 @@ mod tests {
 		// env_logger::init();
 		let key = "0d715f2646c8f85767b5d2764bb2782604a74d81251e398fd8a0a4d55023bb3f";
 		let key = hex::decode(key).unwrap();
-		let parachain = super::Backend::new_ws2(
-			"wss://calamari-rpc.dwellir.com",
-		).await
-		.unwrap();
+		let parachain = super::Backend::new_ws2("wss://calamari-rpc.dwellir.com").await.unwrap();
 
-		let as_of_events =
-			parachain.query_storage(&key[..], None).await.unwrap();
+		let as_of_events = parachain.query_storage(&key[..], None).await.unwrap();
 		assert_eq!(hex::decode("e8030000").unwrap(), as_of_events);
 		// This is statemint's scale encoded parachain id (1000)
 	}
