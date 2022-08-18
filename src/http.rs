@@ -2,9 +2,11 @@ use crate::prelude::*;
 use async_trait::async_trait;
 use core::{convert::TryInto, fmt};
 use jsonrpc::{
-	error::{standard_error, StandardError},
+	error::{result_to_response, standard_error, RpcError, StandardError},
+	serde_json,
 	serde_json::{to_string, value::to_raw_value},
 };
+use serde_json::value::RawValue;
 pub use surf::Url;
 
 use crate::rpc::{self, Rpc, RpcResult};
@@ -65,5 +67,13 @@ impl Rpc for Backend {
 		let response = hex::decode(&res[2..])
 			.map_err(|_err| standard_error(StandardError::InternalError, None))?;
 		Ok(response)
+	}
+
+	async fn rpc_single(
+		&self,
+		method: &str,
+		params: Box<RawValue>,
+	) -> Result<serde_json::value::Value, RpcError> {
+		panic!()
 	}
 }

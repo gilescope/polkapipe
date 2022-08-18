@@ -51,8 +51,12 @@ pub type Result<T> = core::result::Result<T, Error>;
 pub mod http;
 
 /// Tungstenite based backend
-#[cfg(feature = "ws")]
+#[cfg(all(feature = "ws", not(target_arch = "wasm32")))]
 pub mod ws;
+
+/// Tungstenite based backend
+#[cfg(all(feature = "ws-web", target_arch = "wasm32"))]
+pub mod ws_web;
 
 mod rpc;
 
@@ -108,7 +112,8 @@ impl<T: Backend> Deref for Sube<T> {
 ///     async fn metadata(&self) -> Result<Metadata>;
 /// }
 /// ```
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 pub trait Backend {
 	/// Get raw storage items form the blockchain
 	async fn query_storage(&self, key: &[u8], as_of: Option<&[u8]>) -> crate::Result<Vec<u8>>;
@@ -130,7 +135,8 @@ pub trait Backend {
 /// A Dummy backend for offline querying of metadata
 pub struct Offline(pub Vec<u8>);
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl Backend for Offline {
 	async fn query_storage(&self, _key: &[u8], _as_of: Option<&[u8]>) -> Result<Vec<u8>> {
 		Err(Error::ChainUnavailable)
@@ -176,7 +182,7 @@ impl fmt::Display for Error {
 	}
 }
 
-#[cfg(feature = "ws")]
+#[cfg(all(feature = "ws", not(target_arch = "wasm32")))]
 impl From<async_tungstenite::tungstenite::Error> for Error {
 	fn from(_err: async_tungstenite::tungstenite::Error) -> Self {
 		Error::ChainUnavailable
