@@ -1,4 +1,6 @@
-#![cfg_attr(not(feature = "std"), no_std)]
+
+#![recursion_limit = "512"]
+#![cfg_attr(not(feature = "standard"), no_std)]
 /*!
 Polkapipe is a fork of Sube that has few deps with multi-backend support
 that can be used to access substrate based chains. It leaves encoding / decoding
@@ -57,6 +59,10 @@ pub mod ws;
 /// Tungstenite based backend
 #[cfg(all(feature = "ws-web", target_arch = "wasm32"))]
 pub mod ws_web;
+
+/// Smoldot based backend (might not need to be wasm32)
+#[cfg(all(feature = "smoldot", target_arch = "wasm32"))]
+pub mod smol;
 
 mod rpc;
 
@@ -189,5 +195,5 @@ impl From<async_tungstenite::tungstenite::Error> for Error {
 	}
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "standard")]
 impl std::error::Error for Error {}

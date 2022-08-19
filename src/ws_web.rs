@@ -1,12 +1,11 @@
-use alloc::{boxed::Box, collections::BTreeMap, string::String, sync::Arc, vec::Vec};
+use alloc::{boxed::Box, string::String, sync::Arc, vec::Vec};
 use async_std::sync::Mutex;
 use async_trait::async_trait;
 use core::time::Duration;
 use futures::{
-	stream::{SplitSink, SplitStream, StreamExt},
+	stream::{StreamExt},
 	SinkExt,
 };
-use futures_channel::oneshot;
 use jsonrpc::{
 	error::{result_to_response, standard_error, RpcError, StandardError},
 	serde_json,
@@ -27,7 +26,7 @@ type Id = u8;
 #[derive(Clone)]
 pub struct Backend {
 	stream: Arc<Mutex<WsStream>>,
-	wsmeta: Arc<Mutex<WsMeta>>,
+	// wsmeta: Arc<Mutex<WsMeta>>,
 }
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
@@ -53,7 +52,8 @@ impl Rpc for Backend {
 		}
 		log::trace!("RPC now waiting for response ...");
 
-		while let res = self.stream.lock().await.next().await {
+		loop {
+			let res = self.stream.lock().await.next().await;
 			//TODO might be picked up by someone else...
 			if let Some(msg) = res {
 				log::trace!("Got WS message {:?}", msg);
@@ -85,8 +85,6 @@ impl Rpc for Backend {
 				async_std::task::sleep(Duration::from_secs(2)).await
 			}
 		}
-
-		Err(standard_error(StandardError::InternalError, None))
 	}
 
 	async fn rpc_single(
@@ -107,7 +105,8 @@ impl Rpc for Backend {
 			let _ = self.stream.lock().await.send(Message::Text(msg)).await;
 		}
 
-		while let res = self.stream.lock().await.next().await {
+		loop {
+			let res = self.stream.lock().await.next().await;
 			//TODO might be picked up by someone else...
 			if let Some(msg) = res {
 				log::trace!("Got WS message {:?}", msg);
@@ -137,19 +136,17 @@ impl Rpc for Backend {
 				async_std::task::sleep(Duration::from_secs(2)).await
 			}
 		}
-
-		Err(standard_error(StandardError::InternalError, None))
 	}
 }
 
 impl Backend {
 	pub async fn new_ws2(url: &str) -> core::result::Result<Self, Error> {
 		log::info!("WS connecting to {}", url);
-		let (wsmeta, stream) =
+		let (_wsmeta, stream) =
 			WsMeta::connect(url, None).await.expect_throw("assume the connection succeeds");
 
 		let backend =
-			Backend { stream: Arc::new(Mutex::new(stream)), wsmeta: Arc::new(Mutex::new(wsmeta)) };
+			Backend { stream: Arc::new(Mutex::new(stream)) };
 
 		info!("Connection successfully created");
 

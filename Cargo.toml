@@ -15,25 +15,40 @@ jsonrpc = { version = "0.12.0", default-features = false }
 serde_json = { version = "1.0", default-features = false }
 
 # http backend
-surf = { version = "2.3.1", default_features = false, optional = true }
+surf = { version = "2.3.2", default-features = false, optional = true }
 
 # ws backend
-futures-channel = { version = "0.3.17", default-features = false, features = ["alloc"], optional = true }
-futures-util = { version = "0.3.17", default-features = false, features = ["sink"], optional = true }
+futures-channel = { version = "0.3.23", default-features = false, features = ["alloc"], optional = true }
+futures-util = { version = "0.3.23", default-features = false, features = ["sink"], optional = true }
 async-mutex = { version = "1.4.0", optional = true }
 async-tls = { version = "0.11.0", default-features = false, optional = true }
-async-std = { version = "1.10.0", default_features = false, optional = true }
+async-std = { version = "1.10.0", default-features = false, optional = true }
+
+# smoldot backend
+smoldot-light-base = {git="https://github.com/paritytech/smoldot.git", default-features = false, optional = true }
+smoldot = {git="https://github.com/paritytech/smoldot.git", default-features = false, optional = true }
+
+# TODO optional all for smoldot
+blake2-rfc = { version = "0.2.18", default-features = false }
+derive_more = "0.99.17"
+either = { version = "1.7.0", default-features = false }
+event-listener = { version = "2.5.3" }
+fnv = { version = "1.0.7", default-features = false }
+hashbrown = { version = "0.12.3", default-features = false }
+itertools = "0.10.3"
+lru = { version = "0.7.8", default-features = false }  # TODO: there's no way to use a custom hasher; remove this dependency
+rand = "0.8.5"
+slab = { version = "0.4.7", default-features = false }
+lazy_static = "*"
+pin-project = "*"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-# tokio = {version="*", features = ["net"]}
-# soketto = "*"
 wasm-sockets = "*"
 getrandom = { version = "0.2.7", features = ["wasm-bindgen", "js"] }
 wasm-bindgen = "*"
- ws_stream_wasm = "0.7"
+ws_stream_wasm = "0.7"
 wasm-bindgen-futures = "*"
 futures = "*"
-# pharos = "*"
 console_log = "*"
 # The `console_error_panic_hook` crate provides better debugging of panics by
 # logging them with `console.error`. This is great for development, but requires
@@ -41,7 +56,7 @@ console_log = "*"
 # code size when deploying.
 console_error_panic_hook = "^0.1"
 js-sys = "^0.3"
-pin-utils = "^0.1.0-alpha"
+pin-utils = "0.1.0"
 wasm-logger = "^0.1"
 # `wee_alloc` is a tiny allocator for wasm that is only ~1K in code size
 # compared to the default allocator's ~10K. It is slower than the default
@@ -52,8 +67,7 @@ wee_alloc = { version = "0.4.5", optional = true }
 # this is currently necessary for `wasm-timer::Delay` to work
 # parking_lot = { version = "0.11", features = ["wasm-bindgen"] }
 futures-channel = { version="*" }
-async-std = {  version = "1.10", default_features = false }
-
+async-std = {  version = "1.10", default-features = false }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 async-tungstenite = { version = "0.15.0",  default-features = false, features = ["async-std-runtime"], optional = true }
@@ -68,13 +82,14 @@ env_logger = "*"
 wasm-bindgen-test = "*"
 
 [features]
-default = ["std", "ws"]
+default = ["standard", "ws"]
 http = ["surf/h1-client-rustls"]
 http-web = ["surf/wasm-client"]
-std = []
+standard = []
 ws = ["async-std", "async-tungstenite", "async-mutex", "futures-util", "futures-channel"]
 wss = ["ws", "async-tls", "async-tungstenite/async-tls"]
 ws-web = []
+smoldot = ["smoldot-light-base", "dep:smoldot"] # requires --no-default-features "dep:smoldot"
 
 [package.metadata.docs.rs]
 features = ["http"]
