@@ -215,7 +215,7 @@ mod tests {
 
 	#[test]
 	fn can_get_block_hash() {
-		env_logger::init();
+		// env_logger::init();
 		let polkadot = polkadot_backend();
 		let hash = async_std::task::block_on(polkadot.query_block_hash(&vec![1])).unwrap();
 		assert_eq!(
@@ -246,7 +246,7 @@ mod tests {
 
 	#[test]
 	fn can_get_storage_as_of() {
-		env_logger::init();
+		// env_logger::init();
 		let block_hash =
 			hex::decode("e33568bff8e6f30fee6f217a93523a6b29c31c8fe94c076d818b97b97cfd3a16")
 				.unwrap();
@@ -263,7 +263,7 @@ mod tests {
 
 	#[test]
 	fn can_get_storage_now() {
-		env_logger::init();
+		// env_logger::init();
 		let key = "0d715f2646c8f85767b5d2764bb2782604a74d81251e398fd8a0a4d55023bb3f";
 		let key = hex::decode(key).unwrap();
 		let parachain = async_std::task::block_on(crate::ws::Backend::new_ws2(

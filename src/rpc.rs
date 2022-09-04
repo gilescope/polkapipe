@@ -89,7 +89,7 @@ impl<R: Rpc> Backend for R {
 			log::warn!("RPC failure: {}", &e);
 			crate::Error::Node(e.to_string())
 		});
-		log::info!("query_block_hash finished.");
+		// log::info!("query_block_hash finished.");
 		res
 	}
 
@@ -110,7 +110,7 @@ impl<R: Rpc> Backend for R {
 		} else {
 			self.rpc_single(
 				"chain_getBlock",
-				RawValue::from_string("null".into()).unwrap(),
+				Box::<RawValue>::default(),
 			)
 			.await
 			.map_err(|e| {
