@@ -95,17 +95,29 @@ impl<R: Rpc> Backend for R {
 
 	async fn query_block(
 		&self,
-		block_hash_in_hex: &str,
+		block_hash_in_hex: Option<&str>,
 	) -> crate::Result<serde_json::value::Value> {
-		self.rpc_single(
-			"chain_getBlock",
-			RawValue::from_string(format!("\"{}\"", block_hash_in_hex)).unwrap(),
-		)
-		.await
-		.map_err(|e| {
-			log::warn!("RPC failure: {:?}", &e);
-			crate::Error::Node(e.message)
-		})
+		if let Some(block_hash_in_hex) = block_hash_in_hex {
+			self.rpc_single(
+				"chain_getBlock",
+				RawValue::from_string(format!("\"{}\"", block_hash_in_hex)).unwrap(),
+			)
+			.await
+			.map_err(|e| {
+				log::warn!("RPC failure: {:?}", &e);
+				crate::Error::Node(e.message)
+			})
+		} else {
+			self.rpc_single(
+				"chain_getBlock",
+				RawValue::from_string("null".into()).unwrap(),
+			)
+			.await
+			.map_err(|e| {
+				log::warn!("RPC failure: {:?}", &e);
+				crate::Error::Node(e.message)
+			})
+		}
 	}
 
 	async fn query_metadata(&self, as_of: Option<&[u8]>) -> crate::Result<Vec<u8>> {

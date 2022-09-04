@@ -243,8 +243,19 @@ mod tests {
 	}
 
 	async fn can_get_full_block_test() {
-		let hash = "c191b96685aad1250b47d6bc2e95392e3a200eaa6dca8bccfaa51cfd6d558a6a";
+		let hash = Some("c191b96685aad1250b47d6bc2e95392e3a200eaa6dca8bccfaa51cfd6d558a6a");
 		let block_bytes = polkadot_backend().await.query_block(hash).await.unwrap();
+		assert!(matches!(block_bytes, serde_json::value::Value::Object(_)));
+	}
+
+	#[test]
+	#[wasm_bindgen_test]
+	fn can_get_latest_full_block() {
+		async_std::task::block_on(can_get_latest_full_block_test());
+	}
+
+	async fn can_get_latest_full_block_test() {
+		let block_bytes = polkadot_backend().await.query_block(None).await.unwrap();
 		assert!(matches!(block_bytes, serde_json::value::Value::Object(_)));
 	}
 
