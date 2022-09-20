@@ -54,6 +54,9 @@ pub mod http;
 #[cfg(all(feature = "ws", not(target_arch = "wasm32")))]
 pub mod ws;
 
+#[cfg(all(feature = "smoldot-std", not(target_arch = "wasm32")))]
+pub mod smoldot_std;
+
 /// Tungstenite based backend
 #[cfg(all(feature = "ws-web", target_arch = "wasm32"))]
 pub mod ws_web;
