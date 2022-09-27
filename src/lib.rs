@@ -125,7 +125,10 @@ pub trait Backend {
 	async fn query_block_hash(&self, block_number: &[u32]) -> crate::Result<Vec<u8>>;
 
 	/// Get block for block hash
-	async fn query_block(&self, block_hash: Option<&str>) -> crate::Result<serde_json::value::Value>;
+	async fn query_block(
+		&self,
+		block_hash: Option<&str>,
+	) -> crate::Result<serde_json::value::Value>;
 
 	/// Send a signed extrinsic to the blockchain
 	// async fn submit<T>(&self, ext: T) -> Result<()>
@@ -157,7 +160,10 @@ impl Backend for Offline {
 		Err(Error::ChainUnavailable)
 	}
 
-	async fn query_block(&self, _block_hash: Option<&str>) -> crate::Result<serde_json::value::Value> {
+	async fn query_block(
+		&self,
+		_block_hash: Option<&str>,
+	) -> crate::Result<serde_json::value::Value> {
 		Err(Error::ChainUnavailable)
 	}
 

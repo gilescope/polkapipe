@@ -2,10 +2,7 @@ use alloc::{boxed::Box, string::String, sync::Arc, vec::Vec};
 use async_std::sync::Mutex;
 use async_trait::async_trait;
 use core::time::Duration;
-use futures::{
-	stream::StreamExt,
-	SinkExt,
-};
+use futures::{stream::StreamExt, SinkExt};
 use jsonrpc::{
 	error::{result_to_response, standard_error, RpcError, StandardError},
 	serde_json,
@@ -144,10 +141,10 @@ impl Backend {
 		let (_wsmeta, stream) =
 			WsMeta::connect(url, None).await.expect_throw("assume the connection succeeds");
 
-		let backend =
-			Backend { stream: Arc::new(Mutex::new(stream)), 
-				// wsmeta: Arc::new(Mutex::new(wsmeta)) 
-			};
+		let backend = Backend {
+			stream: Arc::new(Mutex::new(stream)),
+			// wsmeta: Arc::new(Mutex::new(wsmeta))
+		};
 
 		info!("Connection successfully created");
 

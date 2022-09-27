@@ -108,15 +108,12 @@ impl<R: Rpc> Backend for R {
 				crate::Error::Node(e.message)
 			})
 		} else {
-			self.rpc_single(
-				"chain_getBlock",
-				Box::<RawValue>::default(),
-			)
-			.await
-			.map_err(|e| {
-				log::warn!("RPC failure: {:?}", &e);
-				crate::Error::Node(e.message)
-			})
+			self.rpc_single("chain_getBlock", Box::<RawValue>::default())
+				.await
+				.map_err(|e| {
+					log::warn!("RPC failure: {:?}", &e);
+					crate::Error::Node(e.message)
+				})
 		}
 	}
 

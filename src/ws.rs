@@ -233,10 +233,11 @@ mod tests {
 	#[test]
 	fn can_get_full_block() {
 		let hash = "c191b96685aad1250b47d6bc2e95392e3a200eaa6dca8bccfaa51cfd6d558a6a";
-		let block_bytes = async_std::task::block_on(polkadot_backend().query_block(Some(hash))).unwrap();
+		let block_bytes =
+			async_std::task::block_on(polkadot_backend().query_block(Some(hash))).unwrap();
 		assert!(matches!(block_bytes, serde_json::value::Value::Object(_)));
 	}
-	
+
 	#[test]
 	fn can_get_latest_block() {
 		let block_bytes = async_std::task::block_on(polkadot_backend().query_block(None)).unwrap();
