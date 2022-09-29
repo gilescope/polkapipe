@@ -30,8 +30,13 @@ impl Rpc for Backend {
 	async fn rpc(&self, method: &str, params: Vec<Box<RawValue>>) -> RpcResult {
 		log::info!("RPC `{}` to {}", method, &self.0);
 		let req = surf::post(&self.0).content_type("application/json").body(
-			to_string(&rpc::Request { id: 1.into(), jsonrpc: Some("2.0"), method, params })
-				.unwrap(),
+			to_string(&rpc::Request {
+				id: 1.into(),
+				jsonrpc: Some("2.0"),
+				method,
+				params: &params,
+			})
+			.unwrap(),
 		);
 		let client = surf::client().with(surf::middleware::Redirect::new(2));
 		let mut res = client
@@ -67,13 +72,5 @@ impl Rpc for Backend {
 		let response = hex::decode(&res[2..])
 			.map_err(|_err| standard_error(StandardError::InternalError, None))?;
 		Ok(response)
-	}
-
-	async fn rpc_single(
-		&self,
-		method: &str,
-		params: Box<RawValue>,
-	) -> Result<serde_json::value::Value, RpcError> {
-		panic!()
 	}
 }

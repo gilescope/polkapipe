@@ -1,14 +1,13 @@
-use alloc::{boxed::Box, string::String, sync::Arc, vec::Vec};
+use alloc::{boxed::Box, sync::Arc};
 use async_std::sync::Mutex;
 use async_trait::async_trait;
 use core::time::Duration;
 use futures::{stream::StreamExt, SinkExt};
 use jsonrpc::{
-	error::{result_to_response, standard_error, RpcError, StandardError},
+	error::{result_to_response, standard_error, StandardError},
 	serde_json,
 };
 use log::info;
-use serde_json::value::RawValue;
 use wasm_bindgen::UnwrapThrowExt;
 use ws_stream_wasm::*;
 
@@ -28,19 +27,16 @@ pub struct Backend {
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl Rpc for Backend {
-	async fn rpc(&self, method: &str, params: Vec<Box<RawValue>>) -> RpcResult {
+	async fn rpc(&self, method: &str, params: &str) -> RpcResult {
 		let id = 1; //TODO: we can do better
 		log::trace!("RPC normal `{}`", method);
 
 		// send rpc request
-		let msg = serde_json::to_string(&rpc::Request {
-			id: id.into(),
-			jsonrpc: Some("2.0"),
-			method,
-			params: &params,
-		})
-		.expect("Request is serializable");
-		log::trace!("RPC Request {} ...", &msg[..50]);
+		let msg = format!(
+			"{{\"id\":{}, \"jsonrpc\": \"2.0\", \"method\":\"{}\", \"params\":{}}}",
+			id, method, params
+		);
+		log::trace!("RPC Request {} ...", &msg[..msg.len().min(150)]);
 		{
 			let mut lock = self.stream.lock().await;
 			log::trace!("RPC got lock now sending {} ...", &msg[..50]);
@@ -65,62 +61,7 @@ impl Rpc for Backend {
 						let res_id = res.id.as_u64().unwrap() as Id;
 						log::trace!("Answering request {}", res_id);
 						if res_id == id {
-							return Ok(res
-								.result::<String>()
-								.map(|s| hex::decode(&s[2..]))
-								.map_err(|_| standard_error(StandardError::InternalError, None))?
-								.map_err(|_| standard_error(StandardError::InternalError, None))?)
-						} else {
-							todo!("At the moment a socket is only used in order");
-						}
-					}
-				}
-			} else {
-				log::error!("Got WS error: {:?}", res);
-				// If you're getting errors, slow down.
-				async_std::task::sleep(Duration::from_secs(2)).await
-			}
-		}
-	}
-
-	async fn rpc_single(
-		&self,
-		method: &str,
-		params: Box<RawValue>,
-	) -> Result<serde_json::value::Value, RpcError> {
-		let id = 1; // TODO at the moment we are only sending requests serially
-		log::trace!("RPC single `{}`", method);
-
-		let msg = format!(
-			"{{\"id\":{}, \"jsonrpc\": \"2.0\", \"method\":\"{}\", \"params\":[{}]}}",
-			id, method, params
-		);
-
-		log::trace!("RPC Request {} ...", &msg);
-		{
-			let _ = self.stream.lock().await.send(Message::Text(msg)).await;
-		}
-
-		loop {
-			let res = self.stream.lock().await.next().await;
-			//TODO might be picked up by someone else...
-			if let Some(msg) = res {
-				log::trace!("Got WS message {:?}", msg);
-				if let Message::Text(msg) = msg {
-					log::trace!("{:#?}", msg);
-					let res: rpc::Response = serde_json::from_str(&msg).unwrap_or_else(|_| {
-						result_to_response(
-							Err(standard_error(StandardError::ParseError, None)),
-							().into(),
-						)
-					});
-					if res.id.is_u64() {
-						let res_id = res.id.as_u64().unwrap() as Id;
-						log::trace!("Answering request {}", res_id);
-						if res_id == id {
-							return Ok(res
-								.result::<serde_json::value::Value>()
-								.map_err(|_| standard_error(StandardError::InternalError, None))?)
+							return Ok(res.result.unwrap())
 						} else {
 							todo!("At the moment a socket is only used in order");
 						}
@@ -179,7 +120,7 @@ mod tests {
 	async fn polkadot_backend() -> super::Backend {
 		crate::ws_web::Backend::new_ws2("wss://rpc.polkadot.io").await.unwrap()
 	}
-	use crate::ws_web::rpc;
+	
 	#[test]
 	#[wasm_bindgen_test]
 	fn can_get_metadata() {
