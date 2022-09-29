@@ -1,4 +1,8 @@
-use crate::prelude::*;
+use crate::{
+	prelude::*,
+	rpc::{self, Rpc, RpcResult},
+	Error,
+};
 use alloc::{collections::BTreeMap, sync::Arc};
 use async_mutex::Mutex;
 use async_std::task;
@@ -13,10 +17,6 @@ use futures_util::{
 use jsonrpc::{
 	error::{result_to_response, standard_error, StandardError},
 	serde_json,
-};
-use crate::{
-	rpc::{self, Rpc, RpcResult},
-	Error,
 };
 
 type Id = u8;

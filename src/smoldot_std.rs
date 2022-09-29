@@ -1,13 +1,13 @@
 use crate::prelude::*;
+use async_std::sync::Mutex;
 use async_trait::async_trait;
+use core::{cell::RefCell, iter};
+use futures::{channel::mpsc, prelude::*};
 use jsonrpc::{
 	error::{standard_error, StandardError},
 	serde_json,
 };
 use serde_json::value::RawValue;
-use async_std::sync::Mutex;
-use core::{cell::RefCell, iter};
-use futures::{channel::mpsc, prelude::*};
 use smoldot_light::ChainId;
 use std::sync::Arc;
 
@@ -81,10 +81,7 @@ impl Backend {
 
 		CLIENT.set(Some(client));
 
-		Backend {
-			chain_id,
-			results_channel: Arc::new(Mutex::new(json_rpc_responses_rx)),
-		}
+		Backend { chain_id, results_channel: Arc::new(Mutex::new(json_rpc_responses_rx)) }
 	}
 }
 
@@ -102,9 +99,8 @@ impl Rpc for Backend {
 		client.json_rpc_request(msg, self.chain_id).unwrap();
 		CLIENT.set(Some(client));
 
-		
 		let response = self.results_channel.lock().await.next().await;
-		
+
 		if let Some(res) = response {
 			// println!("JSON-RPC response: {:?}", &res);
 			return Ok(RawValue::from_string(res).unwrap())

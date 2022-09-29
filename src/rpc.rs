@@ -29,7 +29,7 @@ fn extract_bytes(val: &serde_json::value::RawValue) -> crate::Result<Vec<u8>> {
 	if let Some(result_val) = val2.unwrap().get("result") {
 		if let serde_json::Value::String(meta) = result_val {
 			Ok(hex::decode(&meta[(1 + "0x".len())..meta.len() - 1])
-				.unwrap_or_else(|_|panic!("shoudl be hex: {}", meta)))
+				.unwrap_or_else(|_| panic!("shoudl be hex: {}", meta)))
 		} else {
 			log::warn!("RPC failure : {:?}", &result_val);
 			Err(crate::Error::Node(format!("{:?}", result_val)))
@@ -67,8 +67,7 @@ impl<R: Rpc> Backend for R {
 					crate::Error::Node(e.to_string())
 				})
 		} else {
-			self
-				.rpc("state_getStorage", &format!("[\"0x{}\"]", key_enc))
+			self.rpc("state_getStorage", &format!("[\"0x{}\"]", key_enc))
 				.await
 				.map_err(|e| {
 					log::debug!("RPC failure: {:?}", &e);
@@ -100,8 +99,7 @@ impl<R: Rpc> Backend for R {
 	) -> crate::Result<serde_json::value::Value> {
 		if let Some(block_hash_in_hex) = block_hash_in_hex {
 			let res = self.rpc("chain_getBlock", &format!("[\"{}\"]", block_hash_in_hex)).await;
-			res
-				.map(|raw_val| serde_json::Value::from_str(raw_val.get()).unwrap())
+			res.map(|raw_val| serde_json::Value::from_str(raw_val.get()).unwrap())
 				.map_err(|e| {
 					log::warn!("RPC failure: {:?}", &e);
 					crate::Error::Node(format!("{}", e))

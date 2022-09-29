@@ -120,7 +120,7 @@ mod tests {
 	async fn polkadot_backend() -> super::Backend {
 		crate::ws_web::Backend::new_ws2("wss://rpc.polkadot.io").await.unwrap()
 	}
-	
+
 	#[test]
 	#[wasm_bindgen_test]
 	fn can_get_metadata() {
