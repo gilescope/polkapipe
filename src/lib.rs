@@ -1,4 +1,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+#![feature(assert_matches)]
+#![feature(local_key_cell_methods)]
 /*!
 Polkapipe is a fork of Sube that has few deps with multi-backend support
 that can be used to access substrate based chains. It leaves encoding / decoding
@@ -28,7 +30,10 @@ Creating a client is as simple as instantiating a backend and converting it to a
   Enables the websocket backend based on tungstenite
 * **wss** -
   Same as `ws` and activates the TLS functionality of tungstenite
-
+* **ws-web**
+  Enables the websocket implementation that works in the browser.
+* **smoldot-std**
+  Uses light client to answer rpc requests
 */
 
 #[macro_use]
@@ -54,6 +59,9 @@ pub mod http;
 #[cfg(all(feature = "ws", not(target_arch = "wasm32")))]
 pub mod ws;
 
+#[cfg(all(feature = "smoldot-std", not(target_arch = "wasm32")))]
+pub mod smoldot_std;
+
 /// Tungstenite based backend
 #[cfg(all(feature = "ws-web", target_arch = "wasm32"))]
 pub mod ws_web;
@@ -70,18 +78,6 @@ impl<B: Backend> Sube<B> {
 	pub fn new(backend: B) -> Self {
 		Sube { backend }
 	}
-
-	// /// Get the chain metadata and cache it for future calls
-	// pub async fn metadata(&self) -> Result<&Metadata> {
-	//     match self.meta.get() {
-	//         Some(meta) => Ok(meta),
-	//         None => {
-	//             let meta = self.backend.metadata().await?;
-	//             // self.meta.set(meta).expect("unset");
-	//             Ok(self.meta.get().unwrap())
-	//         }
-	//     }
-	// }
 }
 
 impl<B: Backend> From<B> for Sube<B> {
@@ -122,7 +118,10 @@ pub trait Backend {
 	async fn query_block_hash(&self, block_number: &[u32]) -> crate::Result<Vec<u8>>;
 
 	/// Get block for block hash
-	async fn query_block(&self, block_hash: Option<&str>) -> crate::Result<serde_json::value::Value>;
+	async fn query_block(
+		&self,
+		block_hash: Option<&str>,
+	) -> crate::Result<serde_json::value::Value>;
 
 	/// Send a signed extrinsic to the blockchain
 	// async fn submit<T>(&self, ext: T) -> Result<()>
@@ -154,7 +153,10 @@ impl Backend for Offline {
 		Err(Error::ChainUnavailable)
 	}
 
-	async fn query_block(&self, _block_hash: Option<&str>) -> crate::Result<serde_json::value::Value> {
+	async fn query_block(
+		&self,
+		_block_hash: Option<&str>,
+	) -> crate::Result<serde_json::value::Value> {
 		Err(Error::ChainUnavailable)
 	}
 
