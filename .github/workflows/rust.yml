@@ -28,6 +28,9 @@ jobs:
     - name: Run tests http
       run: cargo test --locked --verbose --features http
   browser:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
     - name: check http-web
       run: cargo check --locked --verbose --features http-web --target wasm32-unknown-unknown
     - name: check ws-web
