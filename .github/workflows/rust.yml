@@ -20,18 +20,18 @@ jobs:
     - if: ${{ matrix.os == 'ubuntu-latest' }}
       run: sudo apt-get install libxcb-shape0-dev libxcb-xfixes0-dev
     - name: Run tests ws
-      run: cargo test --locked --verbose
+      run: cargo test --verbose
     - name: Run tests wss
-      run: cargo test --locked --verbose --features wss
+      run: cargo test --verbose --features wss
     - name: Run tests smoldot desktop
-      run: cargo test --locked --verbose --features smoldot-std
+      run: cargo test --verbose --features smoldot-std
     - name: Run tests http
-      run: cargo test --locked --verbose --features http
+      run: cargo test --verbose --features http
   browser:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
     - name: check http-web
-      run: cargo check --locked --verbose --features http-web --target wasm32-unknown-unknown
+      run: cargo check --verbose --features http-web --target wasm32-unknown-unknown
     - name: check ws-web
-      run: cargo check --locked --verbose --features ws-web --target wasm32-unknown-unknown
+      run: cargo check --verbose --features ws-web --target wasm32-unknown-unknown
