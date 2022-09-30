@@ -1,6 +1,5 @@
 #![cfg_attr(not(feature = "std"), no_std)]
-#![feature(assert_matches)]
-#![feature(local_key_cell_methods)]
+
 /*!
 Polkapipe is a fork of Sube that has few deps with multi-backend support
 that can be used to access substrate based chains. It leaves encoding / decoding

@@ -24,63 +24,66 @@ pub struct Backend {
 
 impl Backend {
 	pub fn new(chainspec: String) -> Self {
-		let mut client = CLIENT.take();
-
-		if client.is_none() {
-			//TODO put in thread local instance.
-			client = Some(smoldot_light::Client::<
-				smoldot_light::platform::async_std::AsyncStdTcpWebSocket,
-			>::new(smoldot_light::ClientConfig {
-				// The smoldot client will need to spawn tasks that run in the background. In order
-				// to do so, we need to provide a "tasks spawner".
-				tasks_spawner: Box::new(move |_name, task| {
-					async_std::task::spawn(task);
-				}),
-				system_name: env!("CARGO_PKG_NAME").into(),
-				system_version: env!("CARGO_PKG_VERSION").into(),
-			}));
-		}
-
 		let (json_rpc_responses_tx, json_rpc_responses_rx) = mpsc::channel(32);
+		let chain_id: ChainId = CLIENT.with(|client| {
+			let mut client = client.borrow_mut();
 
-		let mut client = client.unwrap();
-		// Ask the client to connect to a chain.
+			if client.is_none() {
+				//TODO put in thread local instance.
+				*client = Some(smoldot_light::Client::<
+					smoldot_light::platform::async_std::AsyncStdTcpWebSocket,
+				>::new(smoldot_light::ClientConfig {
+					// The smoldot client will need to spawn tasks that run in the background. In
+					// order to do so, we need to provide a "tasks spawner".
+					tasks_spawner: Box::new(move |_name, task| {
+						async_std::task::spawn(task);
+					}),
+					system_name: env!("CARGO_PKG_NAME").into(),
+					system_version: env!("CARGO_PKG_VERSION").into(),
+				}));
+			}
 
-		//TODO: Don't try and add the same chain twice
-		let chain_id = client
-			.add_chain(smoldot_light::AddChainConfig {
-				// The most important field of the configuration is the chain specification. This is
-				// a JSON document containing all the information necessary for the client to
-				// connect to said chain.
-				specification: &chainspec,
+			//let mut client = client.unwrap();
+			// Ask the client to connect to a chain.
 
-				// See above.
-				// Note that it is possible to pass `None`, in which case the chain will not be able
-				// to handle JSON-RPC requests. This can be used to save up some resources.
-				json_rpc_responses: Some(json_rpc_responses_tx),
+			//TODO: Don't try and add the same chain twice
+			let chain_id = (*client)
+				.as_mut()
+				.unwrap()
+				.add_chain(smoldot_light::AddChainConfig {
+					// The most important field of the configuration is the chain specification.
+					// This is a JSON document containing all the information necessary for the
+					// client to connect to said chain.
+					specification: &chainspec,
 
-				// This field is necessary only if adding a parachain.
-				potential_relay_chains: iter::empty(),
+					// See above.
+					// Note that it is possible to pass `None`, in which case the chain will not be
+					// able to handle JSON-RPC requests. This can be used to save up some resources.
+					json_rpc_responses: Some(json_rpc_responses_tx),
 
-				// After a chain has been added, it is possible to extract a "database" (in the form
-				// of a simple string). This database can later be passed back the next time the
-				// same chain is added again.
-				// A database with an invalid format is simply ignored by the client.
-				// In this example, we don't use this feature, and as such we simply pass an empty
-				// string, which is intentionally an invalid database content.
-				database_content: "",
+					// This field is necessary only if adding a parachain.
+					potential_relay_chains: iter::empty(),
 
-				// The client gives the possibility to insert an opaque "user data" alongside each
-				// chain. This avoids having to create a separate `HashMap<ChainId, ...>` in
-				// parallel of the client.
-				// In this example, this feature isn't used. The chain simply has `()`.
-				user_data: (),
-			})
-			.unwrap();
-		// println!("got chain id {:?}", &chain_id);
+					// After a chain has been added, it is possible to extract a "database" (in the
+					// form of a simple string). This database can later be passed back the next
+					// time the same chain is added again.
+					// A database with an invalid format is simply ignored by the client.
+					// In this example, we don't use this feature, and as such we simply pass an
+					// empty string, which is intentionally an invalid database content.
+					database_content: "",
 
-		CLIENT.set(Some(client));
+					// The client gives the possibility to insert an opaque "user data" alongside
+					// each chain. This avoids having to create a separate `HashMap<ChainId, ...>`
+					// in parallel of the client.
+					// In this example, this feature isn't used. The chain simply has `()`.
+					user_data: (),
+				})
+				.unwrap();
+			// println!("got chain id {:?}", &chain_id);
 
+			//client = Some(client);
+			chain_id
+		});
 		Backend { chain_id, results_channel: Arc::new(Mutex::new(json_rpc_responses_rx)) }
 	}
 }
@@ -95,9 +98,16 @@ impl Rpc for Backend {
 			id, method, params
 		);
 		// println!("request {}", &msg);
-		let mut client = CLIENT.take().unwrap();
-		client.json_rpc_request(msg, self.chain_id).unwrap();
-		CLIENT.set(Some(client));
+		CLIENT.with(|client| {
+			client
+				.borrow_mut()
+				.as_mut()
+				.unwrap()
+				.json_rpc_request(msg, self.chain_id)
+				.unwrap();
+		});
+		// let mut client = CLIENT.take().unwrap();
+		// CLIENT.set(Some(client));
 
 		let response = self.results_channel.lock().await.next().await;
 
