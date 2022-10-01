@@ -19,14 +19,8 @@ jobs:
     - uses: actions/checkout@v3
     - if: ${{ matrix.os == 'ubuntu-latest' }}
       run: sudo apt-get install libxcb-shape0-dev libxcb-xfixes0-dev
-    - name: Run tests ws
-      run: cargo test --verbose
-    - name: Run tests wss
-      run: cargo test --verbose --features wss
-    - name: Run tests http
-      run: cargo test --verbose --features http
-    - name: Run tests smoldot desktop
-      run: cargo test --release --verbose --features smoldot-std
+    - name: Run tests
+      run: cargo test --release --verbose --features smoldot-std,http,wss,ws
   browser:
     runs-on: ubuntu-latest
     steps:
