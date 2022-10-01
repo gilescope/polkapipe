@@ -8,6 +8,7 @@ use async_mutex::Mutex;
 use async_std::task;
 use async_trait::async_trait;
 use async_tungstenite::tungstenite::{Error as WsError, Message};
+use core::time::Duration;
 use futures_channel::oneshot;
 use futures_util::{
 	sink::{Sink, SinkExt},
@@ -49,7 +50,7 @@ where
 
 		// wait for the matching response to arrive
 		let res = recv.await;
-		println!("RPC response: {:?}", &res);
+		// println!("RPC response: {:?}", &res);
 		let res = res.map_err(|_| standard_error(StandardError::InternalError, None))?;
 		Ok(res.result.unwrap())
 	}
@@ -85,7 +86,20 @@ pub type WS2 = futures_util::sink::SinkErrInto<
 impl Backend<WS2> {
 	pub async fn new_ws2(url: &str) -> core::result::Result<Self, WsError> {
 		log::trace!("WS connecting to {}", url);
-		let (stream, _) = async_tungstenite::async_std::connect_async(url).await?;
+
+		let mut socket;
+		let mut tries = 0;
+		let (stream, _) = loop {
+			socket = async_tungstenite::async_std::connect_async(url).await;
+			if let Ok(socket) = socket {
+				break socket
+			} else if tries > 5 {
+				socket?;
+			}
+			tries += 1;
+			async_std::task::sleep(Duration::from_secs(2)).await;
+		};
+
 		let (tx, rx) = stream.split();
 
 		let backend = Backend {
@@ -201,7 +215,7 @@ mod tests {
 	fn can_get_latest_block() {
 		init();
 		let block_bytes = async_std::task::block_on(polkadot_backend().query_block(None)).unwrap();
-		println!("{:?}", &block_bytes);
+		// println!("{:?}", &block_bytes);
 		assert!(matches!(block_bytes, serde_json::value::Value::Object(_)));
 	}
 

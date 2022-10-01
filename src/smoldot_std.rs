@@ -169,7 +169,7 @@ impl Rpc for Backend {
 
 		// wait for the matching response to arrive
 		let res = recv.await;
-		println!("RPC response: {:?}", &res);
+		// println!("RPC response: {:?}", &res);
 		let res = res.map_err(|_| standard_error(StandardError::InternalError, None))?;
 		Ok(res.result.unwrap())
 	}
