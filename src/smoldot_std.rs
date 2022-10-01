@@ -4,7 +4,6 @@ use crate::{
 };
 use async_std::{sync::Mutex, task};
 use async_trait::async_trait;
-use core::iter;
 use futures::{channel::mpsc, prelude::*};
 use futures_channel::oneshot;
 use jsonrpc::{
@@ -38,7 +37,7 @@ pub struct Backend {
 }
 
 impl Backend {
-	pub async fn new(chainspec: String) -> Self {
+	pub async fn new(chainspec: String, parent_chain: Option<Backend>) -> Self {
 		let (json_rpc_responses_tx, json_rpc_responses_rx) = mpsc::channel(32);
 
 		let mut client = CLIENT.lock().await;
@@ -66,6 +65,9 @@ impl Backend {
 		if let Some((_, backend)) = chains.iter().find(|(h, _)| *h == hash) {
 			backend.clone()
 		} else {
+			let potential_relay_chains =
+				if let Some(parent) = parent_chain { vec![parent.chain_id] } else { vec![] }
+					.into_iter();
 			let chain_id = (*client)
 				.as_mut()
 				.expect("client set to Some above.")
@@ -81,7 +83,7 @@ impl Backend {
 					json_rpc_responses: Some(json_rpc_responses_tx),
 
 					// This field is necessary only if adding a parachain.
-					potential_relay_chains: iter::empty(),
+					potential_relay_chains,
 
 					// After a chain has been added, it is possible to extract a "database" (in the
 					// form of a simple string). This database can later be passed back the next
@@ -187,7 +189,21 @@ mod tests {
 		if cfg!(debug_assertions) {
 			panic!("This is not the mode you are looking for. Smoldot is slow (minutes) in debug mode.");
 		}
-		super::Backend::new(include_str!("../chainspecs/polkadot.json").to_string()).await
+		super::Backend::new(include_str!("../chainspecs/polkadot.json").to_string(), None).await
+	}
+
+	async fn statemint_backend() -> super::Backend {
+		if cfg!(debug_assertions) {
+			panic!("This is not the mode you are looking for. Smoldot is slow (minutes) in debug mode.");
+		}
+		let relay_backend =
+			super::Backend::new(include_str!("../chainspecs/polkadot.json").to_string(), None)
+				.await;
+		super::Backend::new(
+			include_str!("../chainspecs/statemint.json").to_string(),
+			Some(relay_backend),
+		)
+		.await
 	}
 
 	#[test]
@@ -196,6 +212,13 @@ mod tests {
 		let backend = async_std::task::block_on(polkadot_backend());
 		let latest_metadata = async_std::task::block_on(backend.query_metadata(None)).unwrap();
 		assert!(latest_metadata.len() > 0);
+
+		// Check statemint's metadata is different to relay chain.
+		let statemint = async_std::task::block_on(statemint_backend());
+		let latest_metadata_statemint =
+			async_std::task::block_on(statemint.query_metadata(None)).unwrap();
+		assert!(latest_metadata.len() > 0);
+		assert_ne!(latest_metadata, latest_metadata_statemint);
 	}
 
 	// #[test]
@@ -241,6 +264,15 @@ mod tests {
 		init();
 		let backend = async_std::task::block_on(polkadot_backend());
 		let block_bytes = async_std::task::block_on(backend.query_block(None)).unwrap();
+		// println!("{:?}", &block_bytes);
+		assert!(matches!(block_bytes, serde_json::value::Value::Object(_)));
+	}
+
+	#[test]
+	fn can_get_latest_block_on_parachain() {
+		init();
+		let statemint = async_std::task::block_on(statemint_backend());
+		let block_bytes = async_std::task::block_on(statemint.query_block(None)).unwrap();
 		// println!("{:?}", &block_bytes);
 		assert!(matches!(block_bytes, serde_json::value::Value::Object(_)));
 	}
