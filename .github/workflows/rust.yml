@@ -26,7 +26,7 @@ jobs:
     - name: Run tests http
       run: cargo test --verbose --features http
     - name: Run tests smoldot desktop
-      run: cargo test --verbose --features smoldot-std
+      run: cargo test --release --verbose --features smoldot-std
   browser:
     runs-on: ubuntu-latest
     steps:

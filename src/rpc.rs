@@ -37,7 +37,7 @@ fn extract_bytes(val: &serde_json::value::RawValue) -> crate::Result<Vec<u8>> {
 	} else {
 		let meta = val.get();
 		Ok(hex::decode(&meta[(1 + "0x".len())..meta.len() - 1])
-			.unwrap_or_else(|_| panic!("shoudl be hex: {}", meta)))
+			.unwrap_or_else(|_| panic!("should be hex: {}", meta)))
 	}
 }
 

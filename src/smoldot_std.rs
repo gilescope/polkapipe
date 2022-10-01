@@ -1,55 +1,74 @@
-use crate::prelude::*;
-use async_std::sync::Mutex;
+use crate::{
+	prelude::*,
+	rpc::{self, Rpc, RpcResult},
+};
+use async_std::{sync::Mutex, task};
 use async_trait::async_trait;
-use core::{cell::RefCell, iter};
+use core::iter;
 use futures::{channel::mpsc, prelude::*};
+use futures_channel::oneshot;
 use jsonrpc::{
-	error::{standard_error, StandardError},
+	error::{result_to_response, standard_error, StandardError},
 	serde_json,
 };
-use serde_json::value::RawValue;
+use lazy_static::lazy_static;
 use smoldot_light::ChainId;
-use std::sync::Arc;
+use std::{
+	collections::{hash_map::DefaultHasher, BTreeMap},
+	hash::{Hash, Hasher},
+	sync::Arc,
+};
 
-use crate::rpc::{Rpc, RpcResult};
+type Id = u8;
 
-thread_local! {
-	static CLIENT: RefCell<Option<smoldot_light::Client<smoldot_light::platform::async_std::AsyncStdTcpWebSocket>>> = RefCell::new(None);
+lazy_static! {
+	static ref CLIENT: Arc<
+		Mutex<
+			Option<smoldot_light::Client<smoldot_light::platform::async_std::AsyncStdTcpWebSocket>>,
+		>,
+	> = Arc::new(Mutex::new(None));
+	/// Chainspec hash to backend so we only initialise each chain once.
+	static ref CHAINS: Arc<Mutex<Vec<(u64, Backend)>>> = Arc::new(Mutex::new(vec![]));
 }
 
+#[derive(Clone)]
 pub struct Backend {
 	chain_id: ChainId,
-	results_channel: Arc<Mutex<futures_channel::mpsc::Receiver<std::string::String>>>,
+	messages: Arc<Mutex<BTreeMap<Id, oneshot::Sender<rpc::Response>>>>,
 }
 
 impl Backend {
-	pub fn new(chainspec: String) -> Self {
+	pub async fn new(chainspec: String) -> Self {
 		let (json_rpc_responses_tx, json_rpc_responses_rx) = mpsc::channel(32);
-		let chain_id: ChainId = CLIENT.with(|client| {
-			let mut client = client.borrow_mut();
 
-			if client.is_none() {
-				//TODO put in thread local instance.
-				*client = Some(smoldot_light::Client::<
-					smoldot_light::platform::async_std::AsyncStdTcpWebSocket,
-				>::new(smoldot_light::ClientConfig {
-					// The smoldot client will need to spawn tasks that run in the background. In
-					// order to do so, we need to provide a "tasks spawner".
-					tasks_spawner: Box::new(move |_name, task| {
-						async_std::task::spawn(task);
-					}),
-					system_name: env!("CARGO_PKG_NAME").into(),
-					system_version: env!("CARGO_PKG_VERSION").into(),
-				}));
-			}
+		let mut client = CLIENT.lock().await;
 
-			//let mut client = client.unwrap();
-			// Ask the client to connect to a chain.
+		if client.is_none() {
+			*client = Some(smoldot_light::Client::<
+				smoldot_light::platform::async_std::AsyncStdTcpWebSocket,
+			>::new(smoldot_light::ClientConfig {
+				// The smoldot client will need to spawn tasks that run in the background. In
+				// order to do so, we need to provide a "tasks spawner".
+				tasks_spawner: Box::new(move |_name, task| {
+					async_std::task::spawn(task);
+				}),
+				system_name: env!("CARGO_PKG_NAME").into(),
+				system_version: env!("CARGO_PKG_VERSION").into(),
+			}));
+		}
 
-			//TODO: Don't try and add the same chain twice
+		let mut chains = CHAINS.lock().await;
+
+		let mut hasher = DefaultHasher::new();
+		chainspec.hash(&mut hasher);
+		let hash: u64 = hasher.finish();
+
+		if let Some((_, backend)) = chains.iter().find(|(h, _)| *h == hash) {
+			backend.clone()
+		} else {
 			let chain_id = (*client)
 				.as_mut()
-				.unwrap()
+				.expect("client set to Some above.")
 				.add_chain(smoldot_light::AddChainConfig {
 					// The most important field of the configuration is the chain specification.
 					// This is a JSON document containing all the information necessary for the
@@ -79,12 +98,44 @@ impl Backend {
 					user_data: (),
 				})
 				.unwrap();
-			// println!("got chain id {:?}", &chain_id);
 
-			//client = Some(client);
-			chain_id
+			let backend = Backend { chain_id, messages: Arc::new(Mutex::new(BTreeMap::new())) };
+			backend.process_incoming_messages(json_rpc_responses_rx);
+			chains.push((hash, backend.clone()));
+			backend
+		}
+	}
+
+	async fn next_id(&self) -> Id {
+		self.messages.lock().await.keys().last().unwrap_or(&0) + 1
+	}
+
+	fn process_incoming_messages(
+		&self,
+		mut rx: futures_channel::mpsc::Receiver<std::string::String>,
+	) {
+		let messages = self.messages.clone();
+
+		task::spawn(async move {
+			while let Some(msg) = rx.next().await {
+				let res: rpc::Response = serde_json::from_str(&msg).unwrap_or_else(|_| {
+					result_to_response(
+						Err(standard_error(StandardError::ParseError, None)),
+						().into(),
+					)
+				});
+				if res.id.is_u64() {
+					let id = res.id.as_u64().unwrap() as Id;
+					log::trace!("Answering request {}", id);
+					let mut messages = messages.lock().await;
+					if let Some(channel) = messages.remove(&id) {
+						channel.send(res).expect("receiver waiting");
+						log::debug!("Answered request id: {}", id);
+					}
+				}
+			}
+			log::warn!("WS connection closed");
 		});
-		Backend { chain_id, results_channel: Arc::new(Mutex::new(json_rpc_responses_rx)) }
 	}
 }
 
@@ -92,30 +143,35 @@ impl Backend {
 impl Rpc for Backend {
 	/// HTTP based JSONRpc request expecting an hex encoded result
 	async fn rpc(&self, method: &str, params: &str) -> RpcResult {
-		let id = 1u32;
+		let id = self.next_id().await;
+		log::debug!("RPC `{}` (ID={})", method, id);
+
+		// Store a sender that will notify our receiver when a matching message arrives
+		let (sender, recv) = oneshot::channel::<rpc::Response>();
+		let messages = self.messages.clone();
+		messages.lock().await.insert(id, sender);
+
 		let msg = format!(
 			"{{\"id\":{}, \"jsonrpc\": \"2.0\", \"method\":\"{}\", \"params\":{}}}",
 			id, method, params
 		);
-		// println!("request {}", &msg);
-		CLIENT.with(|client| {
-			client
-				.borrow_mut()
-				.as_mut()
-				.unwrap()
-				.json_rpc_request(msg, self.chain_id)
-				.unwrap();
-		});
-		// let mut client = CLIENT.take().unwrap();
-		// CLIENT.set(Some(client));
 
-		let response = self.results_channel.lock().await.next().await;
+		log::debug!("RPC Request {} ...", &msg[..msg.len().min(150)]);
+		CLIENT
+			.lock()
+			.await
+			.as_mut()
+			.expect("client to have been inititiated in new")
+			.json_rpc_request(msg, self.chain_id)
+			.map_err(|_e| {
+				jsonrpc::Error::Rpc(standard_error(StandardError::InternalError, None))
+			})?;
 
-		if let Some(res) = response {
-			// println!("JSON-RPC response: {:?}", &res);
-			return Ok(RawValue::from_string(res).unwrap())
-		}
-		Err(jsonrpc::Error::Rpc(standard_error(StandardError::InternalError, None)))
+		// wait for the matching response to arrive
+		let res = recv.await;
+		println!("RPC response: {:?}", &res);
+		let res = res.map_err(|_| standard_error(StandardError::InternalError, None))?;
+		Ok(res.result.unwrap())
 	}
 }
 
@@ -127,15 +183,18 @@ mod tests {
 		let _ = env_logger::builder().is_test(true).try_init();
 	}
 
-	fn polkadot_backend() -> super::Backend {
-		super::Backend::new(include_str!("../chainspecs/polkadot.json").to_string())
+	async fn polkadot_backend() -> super::Backend {
+		if cfg!(debug_assertions) {
+			panic!("This is not the mode you are looking for. Smoldot is slow (minutes) in debug mode.");
+		}
+		super::Backend::new(include_str!("../chainspecs/polkadot.json").to_string()).await
 	}
 
 	#[test]
 	fn can_get_metadata() {
 		init();
-		let latest_metadata =
-			async_std::task::block_on(polkadot_backend().query_metadata(None)).unwrap();
+		let backend = async_std::task::block_on(polkadot_backend());
+		let latest_metadata = async_std::task::block_on(backend.query_metadata(None)).unwrap();
 		assert!(latest_metadata.len() > 0);
 	}
 
@@ -180,7 +239,8 @@ mod tests {
 	#[test]
 	fn can_get_latest_block() {
 		init();
-		let block_bytes = async_std::task::block_on(polkadot_backend().query_block(None)).unwrap();
+		let backend = async_std::task::block_on(polkadot_backend());
+		let block_bytes = async_std::task::block_on(backend.query_block(None)).unwrap();
 		// println!("{:?}", &block_bytes);
 		assert!(matches!(block_bytes, serde_json::value::Value::Object(_)));
 	}
@@ -209,8 +269,9 @@ mod tests {
 		let events_key = "26aa394eea5630e07c48ae0c9558cef780d41e5e16056765bc8461851072c9d7";
 		let key = hex::decode(events_key).unwrap();
 
+		let backend = async_std::task::block_on(polkadot_backend());
 		let as_of_events =
-			async_std::task::block_on(polkadot_backend().query_storage(&key[..], None)).unwrap();
+			async_std::task::block_on(backend.query_storage(&key[..], None)).unwrap();
 		assert!(as_of_events.len() > 0);
 	}
 }
