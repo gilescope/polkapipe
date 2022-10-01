@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use futures::{channel::mpsc, prelude::*};
 use futures_channel::oneshot;
 use jsonrpc::{
-	error::{result_to_response, standard_error, StandardError},
+	error::{result_to_response, standard_error, RpcError, StandardError},
 	serde_json,
 };
 use lazy_static::lazy_static;
@@ -173,7 +173,15 @@ impl Rpc for Backend {
 		let res = recv.await;
 		// println!("RPC response: {:?}", &res);
 		let res = res.map_err(|_| standard_error(StandardError::InternalError, None))?;
-		Ok(res.result.unwrap())
+		if let Some(result) = res.result {
+			Ok(result)
+		} else {
+			Err(jsonrpc::Error::Rpc(RpcError {
+				code: 42,
+				message: format!("Error result: {:?}", &res),
+				data: None,
+			}))
+		}
 	}
 }
 
