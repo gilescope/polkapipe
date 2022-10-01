@@ -37,7 +37,7 @@ pub struct Backend {
 }
 
 impl Backend {
-	pub async fn new(chainspec: String, parent_chain: Option<Backend>) -> Self {
+	pub async fn new(chainspec: &str, parent_chain: Option<Backend>) -> Result<Self, crate::Error> {
 		let (json_rpc_responses_tx, json_rpc_responses_rx) = mpsc::channel(32);
 
 		let mut client = CLIENT.lock().await;
@@ -63,7 +63,7 @@ impl Backend {
 		let hash: u64 = hasher.finish();
 
 		if let Some((_, backend)) = chains.iter().find(|(h, _)| *h == hash) {
-			backend.clone()
+			Ok(backend.clone())
 		} else {
 			let potential_relay_chains =
 				if let Some(parent) = parent_chain { vec![parent.chain_id] } else { vec![] }
@@ -75,7 +75,7 @@ impl Backend {
 					// The most important field of the configuration is the chain specification.
 					// This is a JSON document containing all the information necessary for the
 					// client to connect to said chain.
-					specification: &chainspec,
+					specification: chainspec,
 
 					// See above.
 					// Note that it is possible to pass `None`, in which case the chain will not be
@@ -104,7 +104,7 @@ impl Backend {
 			let backend = Backend { chain_id, messages: Arc::new(Mutex::new(BTreeMap::new())) };
 			backend.process_incoming_messages(json_rpc_responses_rx);
 			chains.push((hash, backend.clone()));
-			backend
+			Ok(backend)
 		}
 	}
 
@@ -189,21 +189,19 @@ mod tests {
 		if cfg!(debug_assertions) {
 			panic!("This is not the mode you are looking for. Smoldot is slow (minutes) in debug mode.");
 		}
-		super::Backend::new(include_str!("../chainspecs/polkadot.json").to_string(), None).await
+		super::Backend::new(include_str!("../chainspecs/polkadot.json"), None)
+			.await
+			.unwrap()
 	}
 
 	async fn statemint_backend() -> super::Backend {
 		if cfg!(debug_assertions) {
 			panic!("This is not the mode you are looking for. Smoldot is slow (minutes) in debug mode.");
 		}
-		let relay_backend =
-			super::Backend::new(include_str!("../chainspecs/polkadot.json").to_string(), None)
-				.await;
-		super::Backend::new(
-			include_str!("../chainspecs/statemint.json").to_string(),
-			Some(relay_backend),
-		)
-		.await
+		let relay_backend = polkadot_backend().await;
+		super::Backend::new(include_str!("../chainspecs/statemint.json"), Some(relay_backend))
+			.await
+			.unwrap()
 	}
 
 	#[test]
