@@ -55,7 +55,7 @@ pub type Result<T> = core::result::Result<T, Error>;
 pub mod http;
 
 /// Tungstenite based backend
-#[cfg(feature = "ws")]
+#[cfg(all(feature = "ws", not(target_arch = "wasm32")))]
 pub mod ws;
 
 #[cfg(all(feature = "smoldot-std", not(target_arch = "wasm32")))]
