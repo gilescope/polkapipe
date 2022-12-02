@@ -1,20 +1,17 @@
 use alloc::{boxed::Box, sync::Arc};
-use async_std::sync::Mutex;
+use async_mutex::Mutex;
 use async_trait::async_trait;
-use core::time::Duration;
-use futures::{stream::StreamExt, SinkExt};
 use jsonrpc::{
 	error::{result_to_response, standard_error, StandardError},
 	serde_json,
 };
-use log::info;
-use wasm_bindgen::UnwrapThrowExt;
 use ws_stream_wasm::*;
-
 use crate::{
 	rpc::{self, Rpc, RpcResult},
 	Error,
 };
+#[cfg(feature = "logging")]
+use log::info;
 
 type Message = WsMessage;
 type Id = u8;
@@ -29,6 +26,7 @@ pub struct Backend {
 impl Rpc for Backend {
 	async fn rpc(&self, method: &str, params: &str) -> RpcResult {
 		let id = 1; //TODO: we can do better
+		#[cfg(feature = "logging")]
 		log::trace!("RPC normal `{}`", method);
 
 		// send rpc request
@@ -36,20 +34,27 @@ impl Rpc for Backend {
 			"{{\"id\":{}, \"jsonrpc\": \"2.0\", \"method\":\"{}\", \"params\":{}}}",
 			id, method, params
 		);
+		#[cfg(feature = "logging")]
 		log::trace!("RPC Request {} ...", &msg[..msg.len().min(150)]);
 		{
 			let mut lock = self.stream.lock().await;
+			#[cfg(feature = "logging")]
 			log::trace!("RPC got lock now sending {} ...", &msg[..50]);
+			use futures_util::sink::SinkExt;
 			let _ = lock.send(Message::Text(msg)).await;
 		}
+		#[cfg(feature = "logging")]
 		log::trace!("RPC now waiting for response ...");
 
 		loop {
+			use futures_util::StreamExt;
 			let res = self.stream.lock().await.next().await;
 			//TODO might be picked up by someone else...
 			if let Some(msg) = res {
+				#[cfg(feature = "logging")]
 				log::trace!("Got WS message {:?}", msg);
 				if let Message::Text(msg) = msg {
+					#[cfg(feature = "logging")]
 					log::trace!("{:#?}", msg);
 					let res: rpc::Response = serde_json::from_str(&msg).unwrap_or_else(|_| {
 						result_to_response(
@@ -58,43 +63,51 @@ impl Rpc for Backend {
 						)
 					});
 					if res.id.is_u64() {
-						let res_id = res.id.as_u64().unwrap() as Id;
+						let res_id = res.id.as_u64().expect("num to be u64") as Id;
+						#[cfg(feature = "logging")]
 						log::trace!("Answering request {}", res_id);
 						if res_id == id {
-							return Ok(res.result.unwrap())
+							return res.result.ok_or(jsonrpc::Error::Rpc(standard_error(StandardError::InternalError, None)))
 						} else {
 							todo!("At the moment a socket is only used in order");
 						}
 					}
 				}
 			} else {
+				#[cfg(feature = "logging")]
 				log::error!("Got WS error: {:?}", res);
 				// If you're getting errors, slow down.
-				async_std::task::sleep(Duration::from_secs(2)).await
+//				web_sys::sleep();
+				// async_std::task::sleep(Duration::from_secs(2)).await
+
+				//TODO wait
 			}
 		}
 	}
 }
 
 impl Backend {
-	pub async fn new_ws2(url: &str) -> core::result::Result<Self, Error> {
-		log::info!("WS connecting to {}", url);
-		let (_wsmeta, stream) =
-			WsMeta::connect(url, None).await.expect_throw("assume the connection succeeds");
+	pub async fn new(urls: &[&str]) -> core::result::Result<Self, Error> {
+		for url in urls {
+			#[cfg(feature = "logging")]
+			log::info!("WS connecting to {}", url);
+			if let Ok((_wsmeta, stream)) =
+				WsMeta::connect(url, None).await {//.unwrap();//expect_throw("assume the connection succeeds");
 
-		let backend = Backend {
-			stream: Arc::new(Mutex::new(stream)),
-			// wsmeta: Arc::new(Mutex::new(wsmeta))
-		};
+				#[cfg(feature = "logging")]
+				info!("Connection successfully created");
 
-		info!("Connection successfully created");
-
-		Ok(backend)
+				return Ok(Backend {
+					stream: Arc::new(Mutex::new(stream)),
+				});
+			}
+		}
+		Err(Error::ChainUnavailable)
 	}
 
-	pub async fn process_incoming_messages(&self) {
-		// Not needed as done inline at the moment.
-	}
+	// pub async fn process_incoming_messages(&self) {
+	// 	// Not needed as done inline at the moment.
+	// }
 }
 
 #[cfg(feature = "ws-web")]
@@ -118,7 +131,7 @@ mod tests {
 	}
 
 	async fn polkadot_backend() -> super::Backend {
-		crate::ws_web::Backend::new_ws2("wss://rpc.polkadot.io").await.unwrap()
+		crate::ws_web::Backend::new(vec!["wss://rpc.polkadot.io"].as_slice()).await.unwrap()
 	}
 
 	#[test]
@@ -228,7 +241,7 @@ mod tests {
 		// env_logger::init();
 		let key = "0d715f2646c8f85767b5d2764bb2782604a74d81251e398fd8a0a4d55023bb3f";
 		let key = hex::decode(key).unwrap();
-		let parachain = super::Backend::new_ws2("wss://calamari-rpc.dwellir.com").await.unwrap();
+		let parachain = super::Backend::new(vec!["wss://calamari-rpc.dwellir.com"].as_slice()).await.unwrap();
 
 		let as_of_events = parachain.query_storage(&key[..], None).await.unwrap();
 		assert_eq!(hex::decode("e8030000").unwrap(), as_of_events);

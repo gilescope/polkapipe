@@ -34,6 +34,7 @@ where
 {
 	async fn rpc(&self, method: &str, params: &str) -> RpcResult {
 		let id = self.next_id().await;
+		#[cfg(feature = "logging")]
 		log::trace!("RPC `{}` (ID={})", method, id);
 
 		// Store a sender that will notify our receiver when a matching message arrives
@@ -45,6 +46,7 @@ where
 			"{{\"id\":{}, \"jsonrpc\": \"2.0\", \"method\":\"{}\", \"params\":{}}}",
 			id, method, params
 		);
+		#[cfg(feature = "logging")]
 		log::debug!("RPC Request {} ...", &msg[..msg.len().min(150)]);
 		let _ = self.tx.lock().await.send(Message::Text(msg)).await;
 
@@ -85,6 +87,7 @@ pub type WS2 = futures_util::sink::SinkErrInto<
 
 impl Backend<WS2> {
 	pub async fn new_ws2(url: &str) -> core::result::Result<Self, WsError> {
+		#[cfg(feature = "logging")]
 		log::trace!("WS connecting to {}", url);
 
 		let mut socket;
@@ -122,6 +125,7 @@ impl Backend<WS2> {
 			while let Some(msg) = rx.next().await {
 				match msg {
 					Ok(msg) => {
+						#[cfg(feature = "logging")]
 						log::trace!("Got WS message {}", msg);
 						if let Ok(msg) = msg.to_text() {
 							let res: rpc::Response =
@@ -133,20 +137,24 @@ impl Backend<WS2> {
 								});
 							if res.id.is_u64() {
 								let id = res.id.as_u64().unwrap() as Id;
+								#[cfg(feature = "logging")]
 								log::trace!("Answering request {}", id);
 								let mut messages = messages.lock().await;
 								if let Some(channel) = messages.remove(&id) {
 									channel.send(res).expect("receiver waiting");
+									#[cfg(feature = "logging")]
 									log::debug!("Answered request id: {}", id);
 								}
 							}
 						}
 					},
 					Err(err) => {
+						#[cfg(feature = "logging")]
 						log::warn!("WS Error: {}", err);
 					},
 				}
 			}
+			#[cfg(feature = "logging")]
 			log::warn!("WS connection closed");
 		});
 	}

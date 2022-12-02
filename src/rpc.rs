@@ -31,6 +31,7 @@ fn extract_bytes(val: &serde_json::value::RawValue) -> crate::Result<Vec<u8>> {
 			Ok(hex::decode(&meta[(1 + "0x".len())..meta.len() - 1])
 				.unwrap_or_else(|_| panic!("shoudl be hex: {}", meta)))
 		} else {
+			#[cfg(feature = "logging")]
 			log::warn!("RPC failure : {:?}", &result_val);
 			Err(crate::Error::Node(format!("{:?}", result_val)))
 		}
@@ -47,6 +48,7 @@ impl<R: Rpc> Backend for R {
 	//state_queryStorage for multiple keys over a hash range.
 	async fn query_storage(&self, key: &[u8], as_of: Option<&[u8]>) -> crate::Result<Vec<u8>> {
 		let key_enc = hex::encode(key);
+		#[cfg(feature = "logging")]
 		log::debug!("StorageKey encoded: {}", key_enc);
 		let mut buf;
 		let key = format!("\"{}\"", key_enc);
@@ -63,6 +65,7 @@ impl<R: Rpc> Backend for R {
 			self.rpc("state_getStorage", &Self::convert_params_raw(&params))
 				.await
 				.map_err(|e| {
+					#[cfg(feature = "logging")]
 					log::debug!("RPC failure: {}", &e);
 					crate::Error::Node(e.to_string())
 				})
@@ -70,6 +73,7 @@ impl<R: Rpc> Backend for R {
 			self.rpc("state_getStorage", &format!("[\"0x{}\"]", key_enc))
 				.await
 				.map_err(|e| {
+					#[cfg(feature = "logging")]
 					log::debug!("RPC failure: {:?}", &e);
 					crate::Error::Node(format!("{}", e))
 				})
@@ -86,6 +90,7 @@ impl<R: Rpc> Backend for R {
 			self.rpc("chain_getBlockHash", &Self::convert_params_raw(&n))
 				.await
 				.map_err(|e| {
+					#[cfg(feature = "logging")]
 					log::warn!("RPC failure: {}", &e);
 					crate::Error::Node(e.to_string())
 				});
@@ -101,6 +106,7 @@ impl<R: Rpc> Backend for R {
 			let res = self.rpc("chain_getBlock", &format!("[\"{}\"]", block_hash_in_hex)).await;
 			res.map(|raw_val| serde_json::Value::from_str(raw_val.get()).unwrap())
 				.map_err(|e| {
+					#[cfg(feature = "logging")]
 					log::warn!("RPC failure: {:?}", &e);
 					crate::Error::Node(format!("{}", e))
 				})
@@ -109,6 +115,7 @@ impl<R: Rpc> Backend for R {
 				.await
 				.map(|raw_val| serde_json::Value::from_str(raw_val.get()).unwrap())
 				.map_err(|e| {
+					#[cfg(feature = "logging")]
 					log::warn!("RPC failure: {:?}", &e);
 					crate::Error::Node(format!("{}", e))
 				})
@@ -129,6 +136,7 @@ impl<R: Rpc> Backend for R {
 			.await
 			.map_err(|e| crate::Error::Node(e.to_string()))?;
 
+		#[cfg(feature = "logging")]
 		log::trace!("Metadata {:#?}", meta);
 		extract_bytes(&meta)
 	}
