@@ -93,6 +93,13 @@ impl<T: Backend> Deref for Sube<T> {
 	}
 }
 
+/// Trait to enable send sync bounds only for non-wasm.
+#[cfg(target_family = "wasm")]
+pub trait BackendParent {}
+
+#[cfg(not(target_family = "wasm"))]
+pub trait BackendParent: Send + Sync {}
+
 /// Generic definition of a blockchain backend
 ///
 /// ```rust,ignore
@@ -109,7 +116,7 @@ impl<T: Backend> Deref for Sube<T> {
 /// ```
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-pub trait Backend {
+pub trait Backend: BackendParent {
 	/// Get raw storage items form the blockchain
 	async fn query_storage(&self, key: &[u8], as_of: Option<&[u8]>) -> crate::Result<Vec<u8>>;
 
@@ -132,6 +139,8 @@ pub trait Backend {
 
 /// A Dummy backend for offline querying of metadata
 pub struct Offline(pub Vec<u8>);
+
+impl BackendParent for Offline {}
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]

@@ -1,6 +1,6 @@
 use crate::{
 	rpc::{self, Rpc, RpcResult},
-	Error,
+	BackendParent, Error,
 };
 use alloc::{boxed::Box, collections::BTreeMap, sync::Arc};
 use async_mutex::Mutex;
@@ -18,6 +18,8 @@ pub struct Backend {
 	stream: WebSocket,
 	messages: Arc<Mutex<BTreeMap<Id, async_oneshot::Sender<rpc::Response>>>>,
 }
+
+impl BackendParent for Backend {}
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
