@@ -7,7 +7,7 @@ use core::str::FromStr;
 /// Rpc defines types of backends that are remote and talk JSONRpc
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-pub trait Rpc: Backend + Send + Sync {
+pub trait Rpc: Backend {
 	async fn rpc(&self, method: &str, params: &str) -> RpcResult;
 
 	fn convert_params_raw(params: &[&str]) -> String {

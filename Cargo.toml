@@ -2,8 +2,8 @@
 name = "polkapipe"
 description = "Fork of sube focusing purely on communication"
 license = "Apache-2.0"
-version = "0.6.0"
-authors = ["Daniel Olano <daniel@olanod.com>"]
+version = "0.7.0"
+authors = ["Daniel Olano <daniel@olanod.com>", "Giles Cope <gilescope@gmail.com>"]
 edition = "2021"
 repository = "https://github.com/gilescope/polkapipe"
 
@@ -32,31 +32,12 @@ smoldot-light = { version = "0.2", optional = true }
 lazy_static = { version = "1.4", optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-# wasm-sockets = {version = "0.2", default-features = false}
-# getrandom = { version = "0.2.7", features = ["wasm-bindgen", "js"], default-features = false }
-# wasm-bindgen = {version = "0.2", default-features = false}
-ws_stream_wasm = {version = "0.7", default-features = false}
-# wasm-bindgen-futures = {version = "0.4", default-features = false}
-# futures = {version = "0.3", default-features = false}
-futures-util = {version = "0.3", default-features = false}
+wasm-bindgen = { version= "0.2", default-features = false}
+web-sys = { version = "0.3", features = ["WebSocket","MessageEvent"], default-features = false}
+js-sys = { version = "0.3", features = [], default-features = false}
 console_log = { version = "0.2", optional = true }
-# The `console_error_panic_hook` crate provides better debugging of panics by
-# logging them with `console.error`. This is great for development, but requires
-# all the `std::fmt` and `std::panicking` infrastructure, so isn't great for
-# code size when deploying.
-# js-sys = "^0.3"
-# pin-utils = "^0.1.0-alpha"
-# wasm-logger = "^0.1"
-# `wee_alloc` is a tiny allocator for wasm that is only ~1K in code size
-# compared to the default allocator's ~10K. It is slower than the default
-# allocator, however.
-#
-# Unfortunately, `wee_alloc` requires nightly Rust when targeting wasm for now.
-# wee_alloc = { version = "0.4.5", optional = true }
-# this is currently necessary for `wasm-timer::Delay` to work
-# parking_lot = { version = "0.11", features = ["wasm-bindgen"] }
-# futures-channel = { version = "0.3" }
-# async-std = { version = "1.10", default_features = false }
+async-oneshot = "0.5"
+pollster = "0.2.5" # needed for block_on in a browser callback
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 async-tungstenite = { version = "0.15.0", default-features = false, features = [

@@ -1,87 +1,61 @@
-use alloc::{boxed::Box, sync::Arc};
-use async_mutex::Mutex;
-use async_trait::async_trait;
-use jsonrpc::{
-	error::{result_to_response, standard_error, StandardError},
-	serde_json,
-};
-use ws_stream_wasm::*;
 use crate::{
 	rpc::{self, Rpc, RpcResult},
 	Error,
 };
+use alloc::{boxed::Box, collections::BTreeMap, sync::Arc};
+use async_mutex::Mutex;
+use async_trait::async_trait;
+use jsonrpc::serde_json;
 #[cfg(feature = "logging")]
 use log::info;
+use wasm_bindgen::{prelude::*, JsCast};
+use web_sys::{MessageEvent, WebSocket};
 
-type Message = WsMessage;
 type Id = u8;
 
 #[derive(Clone)]
 pub struct Backend {
-	stream: Arc<Mutex<WsStream>>,
+	stream: WebSocket,
+	messages: Arc<Mutex<BTreeMap<Id, async_oneshot::Sender<rpc::Response>>>>,
 }
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl Rpc for Backend {
 	async fn rpc(&self, method: &str, params: &str) -> RpcResult {
-		let id = 1; //TODO: we can do better
+		let id = self.next_id().await;
 		#[cfg(feature = "logging")]
 		log::trace!("RPC normal `{}`", method);
+
+		// Store a sender that will notify our receiver when a matching message arrives
+		let (sender, recv) = async_oneshot::oneshot::<rpc::Response>();
+		let messages = self.messages.clone();
+		messages.lock().await.insert(id, sender);
 
 		// send rpc request
 		let msg = format!(
 			"{{\"id\":{}, \"jsonrpc\": \"2.0\", \"method\":\"{}\", \"params\":{}}}",
 			id, method, params
 		);
+
 		#[cfg(feature = "logging")]
 		log::trace!("RPC Request {} ...", &msg[..msg.len().min(150)]);
 		{
-			let mut lock = self.stream.lock().await;
+			let lock = &self.stream;
 			#[cfg(feature = "logging")]
 			log::trace!("RPC got lock now sending {} ...", &msg[..50]);
-			use futures_util::sink::SinkExt;
-			let _ = lock.send(Message::Text(msg)).await;
+			while lock.ready_state() < web_sys::WebSocket::OPEN {
+				//TODO sleep
+			}
+
+			lock.send_with_str(&msg).unwrap();
 		}
 		#[cfg(feature = "logging")]
 		log::trace!("RPC now waiting for response ...");
 
-		loop {
-			use futures_util::StreamExt;
-			let res = self.stream.lock().await.next().await;
-			//TODO might be picked up by someone else...
-			if let Some(msg) = res {
-				#[cfg(feature = "logging")]
-				log::trace!("Got WS message {:?}", msg);
-				if let Message::Text(msg) = msg {
-					#[cfg(feature = "logging")]
-					log::trace!("{:#?}", msg);
-					let res: rpc::Response = serde_json::from_str(&msg).unwrap_or_else(|_| {
-						result_to_response(
-							Err(standard_error(StandardError::ParseError, None)),
-							().into(),
-						)
-					});
-					if res.id.is_u64() {
-						let res_id = res.id.as_u64().expect("num to be u64") as Id;
-						#[cfg(feature = "logging")]
-						log::trace!("Answering request {}", res_id);
-						if res_id == id {
-							return res.result.ok_or(jsonrpc::Error::Rpc(standard_error(StandardError::InternalError, None)))
-						} else {
-							todo!("At the moment a socket is only used in order");
-						}
-					}
-				}
-			} else {
-				#[cfg(feature = "logging")]
-				log::error!("Got WS error: {:?}", res);
-				// If you're getting errors, slow down.
-//				web_sys::sleep();
-				// async_std::task::sleep(Duration::from_secs(2)).await
-
-				//TODO wait
-			}
+		match recv.await {
+			Ok(msg) => Ok(msg.result.unwrap()),
+			Err(_err) => Err(jsonrpc::Error::EmptyBatch),
 		}
 	}
 }
@@ -91,23 +65,46 @@ impl Backend {
 		for url in urls {
 			#[cfg(feature = "logging")]
 			log::info!("WS connecting to {}", url);
-			if let Ok((_wsmeta, stream)) =
-				WsMeta::connect(url, None).await {//.unwrap();//expect_throw("assume the connection succeeds");
 
+			if let Ok(stream) = web_sys::WebSocket::new(url) {
 				#[cfg(feature = "logging")]
 				info!("Connection successfully created");
 
-				return Ok(Backend {
-					stream: Arc::new(Mutex::new(stream)),
-				});
+				let backend = Backend { stream, messages: Default::default() };
+
+				let messages = backend.messages.clone();
+				let onmessage_callback: Closure<dyn Fn(MessageEvent)> =
+					Closure::wrap(Box::new(move |e: MessageEvent| {
+						if let Ok(txt) = e.data().dyn_into::<js_sys::JsString>() {
+							let msg: alloc::string::String = txt.into();
+							let res: rpc::Response = serde_json::from_str(&msg).unwrap();
+							if res.id.is_u64() {
+								let id = res.id.as_u64().unwrap() as Id;
+
+								use pollster::FutureExt as _;
+								let mut messages = messages.lock().block_on();
+								if let Some(mut channel) = messages.remove(&id) {
+									channel.send(res).expect("receiver waiting");
+									#[cfg(feature = "logging")]
+									log::debug!("Answered request id: {}", id);
+								}
+							}
+						}
+					}));
+
+				// forget the callback to keep it alive
+				backend.stream.set_onmessage(Some(onmessage_callback.as_ref().unchecked_ref()));
+				onmessage_callback.forget();
+
+				return Ok(backend)
 			}
 		}
 		Err(Error::ChainUnavailable)
 	}
 
-	// pub async fn process_incoming_messages(&self) {
-	// 	// Not needed as done inline at the moment.
-	// }
+	async fn next_id(&self) -> Id {
+		self.messages.lock().await.keys().last().unwrap_or(&0) + 1
+	}
 }
 
 #[cfg(feature = "ws-web")]
@@ -131,7 +128,9 @@ mod tests {
 	}
 
 	async fn polkadot_backend() -> super::Backend {
-		crate::ws_web::Backend::new(vec!["wss://rpc.polkadot.io"].as_slice()).await.unwrap()
+		crate::ws_web::Backend::new(vec!["wss://rpc.polkadot.io"].as_slice())
+			.await
+			.unwrap()
 	}
 
 	#[test]
@@ -241,7 +240,9 @@ mod tests {
 		// env_logger::init();
 		let key = "0d715f2646c8f85767b5d2764bb2782604a74d81251e398fd8a0a4d55023bb3f";
 		let key = hex::decode(key).unwrap();
-		let parachain = super::Backend::new(vec!["wss://calamari-rpc.dwellir.com"].as_slice()).await.unwrap();
+		let parachain = super::Backend::new(vec!["wss://calamari-rpc.dwellir.com"].as_slice())
+			.await
+			.unwrap();
 
 		let as_of_events = parachain.query_storage(&key[..], None).await.unwrap();
 		assert_eq!(hex::decode("e8030000").unwrap(), as_of_events);

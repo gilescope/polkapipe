@@ -10,3 +10,25 @@ Polkapipe supports multiple backends under different feature flags like `http`, 
 
   * few dependencies (and work in browesr)
   * endever to give you as good an error message as we can get our hands on. (work in progress)
+
+
+## Wasm:
+
+To compile for wasm:
+
+```
+cargo check --target wasm32-unknown-unknown --features ws-web --no-default-features
+```
+
+To test for wasm:
+```
+wasm-pack test --headless --firefox --no-default-features --features ws-web
+```
+
+## Changelog
+
+0.7:
+ * Removed ws_stream_wasm and used the underlying
+WebSocket directly. Less deps. 
+ * Made logging an opt in feature.
+ * Backend not Send + Sync
