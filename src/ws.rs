@@ -88,7 +88,7 @@ pub type WS2 = futures_util::sink::SinkErrInto<
 >;
 
 impl Backend<WS2> {
-	pub async fn new_ws2(url: &str) -> core::result::Result<Self, WsError> {
+	pub async fn new(url: &str) -> core::result::Result<Self, WsError> {
 		#[cfg(feature = "logging")]
 		log::trace!("WS connecting to {}", url);
 
@@ -150,9 +150,9 @@ impl Backend<WS2> {
 							}
 						}
 					},
-					Err(err) => {
+					Err(_err) => {
 						#[cfg(feature = "logging")]
-						log::warn!("WS Error: {}", err);
+						log::warn!("WS Error: {}", _err);
 					},
 				}
 			}
@@ -172,7 +172,7 @@ mod tests {
 	}
 
 	fn polkadot_backend() -> ws::Backend<WS2> {
-		async_std::task::block_on(crate::ws::Backend::new_ws2("wss://rpc.polkadot.io")).unwrap()
+		async_std::task::block_on(crate::ws::Backend::new("wss://rpc.polkadot.io")).unwrap()
 	}
 
 	#[test]
@@ -252,7 +252,7 @@ mod tests {
 		let key = "26aa394eea5630e07c48ae0c9558cef780d41e5e16056765bc8461851072c9d7";
 		let key = hex::decode(key).unwrap();
 		let parachain =
-			async_std::task::block_on(crate::ws::Backend::new_ws2("wss://rpc.polkadot.io"))
+			async_std::task::block_on(crate::ws::Backend::new("wss://rpc.polkadot.io"))
 				.unwrap();
 
 		let as_of_events =

@@ -10,11 +10,11 @@ to higher level crates like desub.
 Creating a client is as simple as instantiating a backend and converting it to a `Sube` instance.
 
 ```
-# use polkapipe::{Sube, Error, Backend};
+# use polkapipe::{Error, Backend};
 # #[async_std::main] async fn main() -> Result<(), Error> {
 # const CHAIN_URL: &str = "ws://localhost:24680";
 // Create an instance of Sube from any of the available backends
-// let client: Sube<_> = ws::Backend::new_ws2(CHAIN_URL).await?.into();
+// let client = ws::Backend::new(CHAIN_URL).await?;
 
 # Ok(()) }
 ```
@@ -67,32 +67,6 @@ pub mod ws_web;
 
 mod rpc;
 
-/// Main interface for interacting with the Substrate based blockchain
-#[derive(Debug)]
-pub struct Sube<B> {
-	backend: B,
-}
-
-impl<B: Backend> Sube<B> {
-	pub fn new(backend: B) -> Self {
-		Sube { backend }
-	}
-}
-
-impl<B: Backend> From<B> for Sube<B> {
-	fn from(b: B) -> Self {
-		Sube::new(b)
-	}
-}
-
-impl<T: Backend> Deref for Sube<T> {
-	type Target = T;
-
-	fn deref(&self) -> &Self::Target {
-		&self.backend
-	}
-}
-
 /// Trait to enable send sync bounds only for non-wasm.
 #[cfg(target_family = "wasm")]
 pub trait BackendParent {}
@@ -134,7 +108,11 @@ pub trait Backend: BackendParent {
 	// where
 	//     T: AsRef<[u8]> + Send;
 
+	/// TODO: this can be achieved with query_state_call
 	async fn query_metadata(&self, as_of: Option<&[u8]>) -> crate::Result<Vec<u8>>;
+
+	/// E.g. method = "Metadata_metadata" format: CamelCase_snake_case
+	async fn query_state_call(&self, method: &str, key: &[u8], as_of: Option<&[u8]>) -> crate::Result<Vec<u8>>;
 }
 
 /// A Dummy backend for offline querying of metadata
@@ -170,6 +148,10 @@ impl Backend for Offline {
 
 	async fn query_metadata(&self, _as_of: Option<&[u8]>) -> Result<Vec<u8>> {
 		Ok(self.0.clone())
+	}
+
+	async fn query_state_call(&self, _method: &str, _key: &[u8], _as_of: Option<&[u8]>) -> Result<Vec<u8>> {
+		Err(Error::ChainUnavailable)
 	}
 }
 

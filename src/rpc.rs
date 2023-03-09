@@ -82,6 +82,45 @@ impl<R: Rpc> Backend for R {
 		extract_bytes(&val)
 	}
 
+	//state_queryStorage for multiple keys over a hash range.
+	async fn query_state_call(&self, method: &str, key: &[u8], as_of: Option<&[u8]>) -> crate::Result<Vec<u8>> {
+		let key_enc = hex::encode(key);
+		#[cfg(feature = "logging")]
+		log::debug!("StorageKey encoded: {}", key_enc);
+		let mut buf;
+		let key = format!("\"0x{}\"", key_enc);		
+		let method_quoted = format!("\"{}\"", method);
+
+		let params = if let Some(block_hash) = as_of {					
+			buf = hex::encode(block_hash);
+			buf = format!("\"0x{}\"", buf);
+			vec![method_quoted.as_str(), key.as_str(), buf.as_str()]
+		} else {
+			vec![method_quoted.as_str(), key.as_str()]
+		};
+
+		let val = if as_of.is_some() {
+			// state_queryStorageAt
+			self.rpc("state_call", &Self::convert_params_raw(&params))
+				.await
+				.map_err(|e| {
+					#[cfg(feature = "logging")]
+					log::debug!("RPC failure: {}", &e);
+					crate::Error::Node(e.to_string())
+				})
+		} else {
+			self.rpc("state_call", &format!("[\"{}\", \"0x{}\"]", method, key_enc))
+				.await
+				.map_err(|e| {
+					#[cfg(feature = "logging")]
+					log::debug!("RPC failure: {:?}", &e);
+					crate::Error::Node(format!("{}", e))
+				})
+		};
+		let val = val?;
+		extract_bytes(&val)
+	}
+
 	async fn query_block_hash(&self, block_numbers: &[u32]) -> crate::Result<Vec<u8>> {
 		let num: Vec<_> = block_numbers.iter().map(|i| i.to_string()).collect();
 		let n: Vec<_> = num.iter().map(|i| i.as_str()).collect();
@@ -123,21 +162,14 @@ impl<R: Rpc> Backend for R {
 	}
 
 	async fn query_metadata(&self, as_of: Option<&[u8]>) -> crate::Result<Vec<u8>> {
-		let mut buf;
-		let params = if let Some(block_hash) = as_of {
-			buf = hex::encode(block_hash);
-			buf = format!("\"{}\"", buf);
-			vec![buf.as_str()]
-		} else {
-			vec![]
-		};
-		let meta = self
-			.rpc("state_getMetadata", &Self::convert_params_raw(&params[..]))
-			.await
-			.map_err(|e| crate::Error::Node(e.to_string()))?;
-
-		#[cfg(feature = "logging")]
-		log::trace!("Metadata {:#?}", meta);
-		extract_bytes(&meta)
+		self.query_state_call("Metadata_metadata", b"", as_of).await
+		.map(|mut v| {
+			//TODO find a more efficient way
+			v.remove(0);
+			v.remove(0);
+			v.remove(0);
+			v.remove(0);
+			v
+		})
 	}
 }
