@@ -38,7 +38,7 @@ Creating a client is as simple as instantiating a backend and converting it to a
 #[macro_use]
 extern crate alloc;
 use async_trait::async_trait;
-use core::{fmt, ops::Deref};
+use core::fmt;
 use prelude::*;
 mod prelude {
 	pub use alloc::{
@@ -104,9 +104,7 @@ pub trait Backend: BackendParent {
 	) -> crate::Result<serde_json::value::Value>;
 
 	/// Send a signed extrinsic to the blockchain
-	// async fn submit<T>(&self, ext: T) -> Result<()>
-	// where
-	//     T: AsRef<[u8]> + Send;
+	async fn submit<T>(&self, ext: impl AsRef<[u8]> + Send) -> Result<()>;
 
 	/// TODO: this can be achieved with query_state_call
 	async fn query_metadata(&self, as_of: Option<&[u8]>) -> crate::Result<Vec<u8>>;
@@ -153,6 +151,10 @@ impl Backend for Offline {
 	async fn query_state_call(&self, _method: &str, _key: &[u8], _as_of: Option<&[u8]>) -> Result<Vec<u8>> {
 		Err(Error::ChainUnavailable)
 	}
+
+	async fn submit<T>(&self, _ext: impl AsRef<[u8]> + Send) -> Result<()> {
+        unimplemented!("Can't send in offline mode")
+    }
 }
 
 #[derive(Clone, Debug)]

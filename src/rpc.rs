@@ -172,4 +172,19 @@ impl<R: Rpc> Backend for R {
 			v
 		})
 	}
+
+	async fn submit<T>(&self, ext: impl AsRef<[u8]> + Send) -> crate::Result<()> {
+        let extrinsic = format!("0x{}", hex::encode(ext.as_ref()));
+		#[cfg(feature = "logging")]
+        log::debug!("Extrinsic: {}", extrinsic);
+
+        let _res = self
+            .rpc("author_submitExtrinsic", &Self::convert_params_raw(&[&extrinsic]))
+            .await
+            .map_err(|e| crate::Error::Node(e.to_string()))?;
+		
+		#[cfg(feature = "logging")]
+        log::debug!("Extrinsic {:x?}", _res);
+        Ok(())
+    }
 }
