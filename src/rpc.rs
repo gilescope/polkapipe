@@ -1,4 +1,4 @@
-use crate::{prelude::*, Backend};
+use crate::{prelude::*};
 use async_trait::async_trait;
 pub use jsonrpc::{error, Error, Request, Response};
 pub type RpcResult = Result<Box<serde_json::value::RawValue>, error::Error>;
@@ -7,10 +7,11 @@ use core::str::FromStr;
 /// Rpc defines types of backends that are remote and talk JSONRpc
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-pub trait Rpc: Backend {
+pub trait Rpc {
 	async fn rpc(&self, method: &str, params: &str) -> RpcResult;
+}
 
-	fn convert_params_raw(params: &[&str]) -> String {
+fn convert_params_raw(params: &[&str]) -> String {
 		let mut msg = String::from("[");
 		for p in params {
 			let first = msg.len() == 1;
@@ -22,7 +23,6 @@ pub trait Rpc: Backend {
 		msg.push(']');
 		msg
 	}
-}
 
 fn extract_bytes(val: &serde_json::value::RawValue) -> crate::Result<Vec<u8>> {
 	let val2 = serde_json::Value::from_str(val.get());
@@ -42,11 +42,15 @@ fn extract_bytes(val: &serde_json::value::RawValue) -> crate::Result<Vec<u8>> {
 	}
 }
 
-#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-impl<R: Rpc> Backend for R {
+pub struct PolkaPipe<R: Rpc> {
+	pub rpc: R,
+}
+
+// #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+// #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+impl<R: Rpc> PolkaPipe<R> {
 	//state_queryStorage for multiple keys over a hash range.
-	async fn query_storage(&self, key: &[u8], as_of: Option<&[u8]>) -> crate::Result<Vec<u8>> {
+	pub async fn query_storage(&self, key: &[u8], as_of: Option<&[u8]>) -> crate::Result<Vec<u8>> {
 		let key_enc = hex::encode(key);
 		#[cfg(feature = "logging")]
 		log::debug!("StorageKey encoded: {}", key_enc);
@@ -62,7 +66,7 @@ impl<R: Rpc> Backend for R {
 
 		let val = if as_of.is_some() {
 			// state_queryStorageAt
-			self.rpc("state_getStorage", &Self::convert_params_raw(&params))
+			self.rpc.rpc("state_getStorage", &convert_params_raw(&params))
 				.await
 				.map_err(|e| {
 					#[cfg(feature = "logging")]
@@ -70,7 +74,7 @@ impl<R: Rpc> Backend for R {
 					crate::Error::Node(e.to_string())
 				})
 		} else {
-			self.rpc("state_getStorage", &format!("[\"0x{}\"]", key_enc))
+			self.rpc.rpc("state_getStorage", &format!("[\"0x{}\"]", key_enc))
 				.await
 				.map_err(|e| {
 					#[cfg(feature = "logging")]
@@ -83,7 +87,7 @@ impl<R: Rpc> Backend for R {
 	}
 
 	//state_queryStorage for multiple keys over a hash range.
-	async fn query_state_call(&self, method: &str, key: &[u8], as_of: Option<&[u8]>) -> crate::Result<Vec<u8>> {
+	pub async fn query_state_call(&self, method: &str, key: &[u8], as_of: Option<&[u8]>) -> crate::Result<Vec<u8>> {
 		let key_enc = hex::encode(key);
 		#[cfg(feature = "logging")]
 		log::debug!("StorageKey encoded: {}", key_enc);
@@ -101,7 +105,7 @@ impl<R: Rpc> Backend for R {
 
 		let val = if as_of.is_some() {
 			// state_queryStorageAt
-			self.rpc("state_call", &Self::convert_params_raw(&params))
+			self.rpc.rpc("state_call", &convert_params_raw(&params))
 				.await
 				.map_err(|e| {
 					#[cfg(feature = "logging")]
@@ -109,7 +113,7 @@ impl<R: Rpc> Backend for R {
 					crate::Error::Node(e.to_string())
 				})
 		} else {
-			self.rpc("state_call", &format!("[\"{}\", \"0x{}\"]", method, key_enc))
+			self.rpc.rpc("state_call", &format!("[\"{}\", \"0x{}\"]", method, key_enc))
 				.await
 				.map_err(|e| {
 					#[cfg(feature = "logging")]
@@ -121,12 +125,12 @@ impl<R: Rpc> Backend for R {
 		extract_bytes(&val)
 	}
 
-	async fn query_block_hash(&self, block_numbers: &[u32]) -> crate::Result<Vec<u8>> {
+	pub async fn query_block_hash(&self, block_numbers: &[u32]) -> crate::Result<Vec<u8>> {
 		let num: Vec<_> = block_numbers.iter().map(|i| i.to_string()).collect();
 		let n: Vec<_> = num.iter().map(|i| i.as_str()).collect();
 
 		let res =
-			self.rpc("chain_getBlockHash", &Self::convert_params_raw(&n))
+			self.rpc.rpc("chain_getBlockHash", &convert_params_raw(&n))
 				.await
 				.map_err(|e| {
 					#[cfg(feature = "logging")]
@@ -137,12 +141,12 @@ impl<R: Rpc> Backend for R {
 		extract_bytes(&val)
 	}
 
-	async fn query_block(
+	pub async fn query_block(
 		&self,
 		block_hash_in_hex: Option<&str>,
 	) -> crate::Result<serde_json::value::Value> {
 		if let Some(block_hash_in_hex) = block_hash_in_hex {
-			let res = self.rpc("chain_getBlock", &format!("[\"{}\"]", block_hash_in_hex)).await;
+			let res = self.rpc.rpc("chain_getBlock", &format!("[\"{}\"]", block_hash_in_hex)).await;
 			res.map(|raw_val| serde_json::Value::from_str(raw_val.get()).unwrap())
 				.map_err(|e| {
 					#[cfg(feature = "logging")]
@@ -150,7 +154,7 @@ impl<R: Rpc> Backend for R {
 					crate::Error::Node(format!("{}", e))
 				})
 		} else {
-			self.rpc("chain_getBlock", "[]")
+			self.rpc.rpc("chain_getBlock", "[]")
 				.await
 				.map(|raw_val| serde_json::Value::from_str(raw_val.get()).unwrap())
 				.map_err(|e| {
@@ -161,7 +165,7 @@ impl<R: Rpc> Backend for R {
 		}
 	}
 
-	async fn query_metadata(&self, as_of: Option<&[u8]>) -> crate::Result<Vec<u8>> {
+	pub async fn query_metadata(&self, as_of: Option<&[u8]>) -> crate::Result<Vec<u8>> {
 		self.query_state_call("Metadata_metadata", b"", as_of).await
 		.map(|mut v| {
 			//TODO find a more efficient way
@@ -173,13 +177,13 @@ impl<R: Rpc> Backend for R {
 		})
 	}
 
-	async fn submit<T>(&self, ext: impl AsRef<[u8]> + Send) -> crate::Result<()> {
+	pub async fn submit<T>(&self, ext: impl AsRef<[u8]> + Send) -> crate::Result<()> {
         let extrinsic = format!("0x{}", hex::encode(ext.as_ref()));
 		#[cfg(feature = "logging")]
         log::debug!("Extrinsic: {}", extrinsic);
 
         let _res = self
-            .rpc("author_submitExtrinsic", &Self::convert_params_raw(&[&extrinsic]))
+            .rpc.rpc("author_submitExtrinsic", &convert_params_raw(&[&extrinsic]))
             .await
             .map_err(|e| crate::Error::Node(e.to_string()))?;
 		

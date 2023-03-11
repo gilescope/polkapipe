@@ -5,7 +5,6 @@ use jsonrpc::{
 	error::{standard_error, StandardError},
 	serde_json::value::to_raw_value,
 };
-use crate::BackendParent;
 pub use surf::Url;
 
 use crate::rpc::{self, Rpc, RpcResult};
@@ -23,9 +22,6 @@ impl Backend {
 	}
 }
 
-impl BackendParent for Backend {
-
-}
 
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
@@ -82,14 +78,14 @@ impl Rpc for Backend {
 #[cfg(feature = "http")]
 #[cfg(test)]
 mod tests {
-	use crate::{Backend};
+	use super::{Backend};
 
 	fn init() {
 		let _ = env_logger::builder().is_test(true).try_init();
 	}
 
-	fn polkadot_backend() -> super::Backend {
-		super::Backend::new("http://rpc.polkadot.io")
+	fn polkadot_backend() -> crate::PolkaPipe<Backend> {
+		crate::PolkaPipe::<Backend>{ rpc: Backend::new("http://rpc.polkadot.io")}
 	}
 
 	#[test]

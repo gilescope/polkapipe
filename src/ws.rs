@@ -1,7 +1,7 @@
 use crate::{
 	prelude::*,
 	rpc::{self, Rpc, RpcResult},
-	BackendParent, Error,
+	Error,
 };
 use alloc::{collections::BTreeMap, sync::Arc};
 use async_mutex::Mutex;
@@ -27,7 +27,7 @@ pub struct Backend<Tx> {
 	messages: Arc<Mutex<BTreeMap<Id, oneshot::Sender<rpc::Response>>>>,
 }
 
-impl<Tx> BackendParent for Backend<Tx> where Tx: Sink<Message, Error = Error> + Unpin + Send {}
+// impl<Tx> BackendParent for Backend<Tx> where Tx: Sink<Message, Error = Error> + Unpin + Send {}
 
 #[async_trait]
 impl<Tx> Rpc for Backend<Tx>
