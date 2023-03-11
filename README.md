@@ -26,7 +26,10 @@ wasm-pack test --headless --firefox --no-default-features --features ws-web
 ```
 
 ## Changelog
-
+0.8:
+ * Used less async traits. Now use `PolkaPipe::<Backend>` rather than `Backend`.
+ * use nightly async trait for rpc rather than the crate.
+ * re-add submit
 0.7:
  * Removed ws_stream_wasm and used the underlying
 WebSocket directly. Less deps. 

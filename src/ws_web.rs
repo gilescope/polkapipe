@@ -4,7 +4,6 @@ use crate::{
 };
 use alloc::{boxed::Box, collections::BTreeMap, sync::Arc};
 use async_mutex::Mutex;
-use async_trait::async_trait;
 use jsonrpc::serde_json;
 #[cfg(feature = "logging")]
 use log::info;
@@ -19,8 +18,8 @@ pub struct Backend {
 	messages: Arc<Mutex<BTreeMap<Id, async_oneshot::Sender<rpc::Response>>>>,
 }
 
-#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+// #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+// #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl Rpc for Backend {
 	async fn rpc(&self, method: &str, params: &str) -> RpcResult {
 		let id = self.next_id().await;

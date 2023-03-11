@@ -1948,7 +1948,6 @@ dependencies = [
  "async-oneshot",
  "async-std",
  "async-tls 0.11.0",
- "async-trait",
  "async-tungstenite",
  "console_error_panic_hook",
  "console_log",

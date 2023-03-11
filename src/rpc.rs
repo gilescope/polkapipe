@@ -1,12 +1,12 @@
 use crate::{prelude::*};
-use async_trait::async_trait;
+// use async_trait::async_trait;
 pub use jsonrpc::{error, Error, Request, Response};
 pub type RpcResult = Result<Box<serde_json::value::RawValue>, error::Error>;
 use core::str::FromStr;
 
 /// Rpc defines types of backends that are remote and talk JSONRpc
-#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+// #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+// #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 pub trait Rpc {
 	async fn rpc(&self, method: &str, params: &str) -> RpcResult;
 }

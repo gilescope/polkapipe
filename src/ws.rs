@@ -6,7 +6,6 @@ use crate::{
 use alloc::{collections::BTreeMap, sync::Arc};
 use async_mutex::Mutex;
 use async_std::task;
-use async_trait::async_trait;
 use async_tungstenite::tungstenite::{Error as WsError, Message};
 use core::time::Duration;
 use futures_channel::oneshot;
@@ -29,7 +28,6 @@ pub struct Backend<Tx> {
 
 // impl<Tx> BackendParent for Backend<Tx> where Tx: Sink<Message, Error = Error> + Unpin + Send {}
 
-#[async_trait]
 impl<Tx> Rpc for Backend<Tx>
 where
 	Tx: Sink<Message, Error = Error> + Unpin + Send,

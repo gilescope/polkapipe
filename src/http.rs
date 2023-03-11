@@ -1,5 +1,4 @@
 use crate::prelude::*;
-use async_trait::async_trait;
 use core::{convert::TryInto, fmt};
 use jsonrpc::{
 	error::{standard_error, StandardError},
@@ -23,8 +22,8 @@ impl Backend {
 }
 
 
-#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+// #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+// #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl Rpc for Backend {
 	/// HTTP based JSON RPC request expecting valid json result.
 	async fn rpc(&self, method: &str, params: &str) -> RpcResult {
