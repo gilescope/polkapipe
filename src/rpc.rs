@@ -12,6 +12,10 @@ pub trait Rpc {
 	async fn rpc(&self, method: &str, params: &str) -> RpcResult;
 }
 
+pub trait Streamable {
+	async fn stream(&self, method: &str, params: &str) -> async_std::channel::Receiver<jsonrpc::Response>;
+}
+
 fn convert_params_raw(params: &[&str]) -> String {
 	let mut msg = String::from("[");
 	for p in params {
@@ -49,32 +53,45 @@ pub struct PolkaPipe<R: Rpc> {
 
 // #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 // #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
-impl<R: Rpc> PolkaPipe<R> {
+impl<R: Rpc + Streamable> PolkaPipe<R> {
 	pub async fn subscribe_storage(
 		&self,
 		key: &[u8],
 		as_of: Option<&[u8]>,
 	) -> impl Stream<Item = crate::Result<Vec<u8>>> {
 		// Can't think how we could support http subscriptions?
-		unimplemented!("Please use a websocket implementation for subscriptions.");
-		// 		let key_enc = hex::encode(key);
-		// 		#[cfg(feature = "logging")]
-		// 		log::debug!("StorageKey encoded: {}", key_enc);
-		// 		// let mut buf;
-		// 		let key = format!("\"{}\"", key_enc);
-		// 		let res =
-		// 			self.rpc.rpc("state_subscribeStorage", &convert_params_raw(&[&key]))
-		// 				.await
-		// 				.map_err(|e| {
-		// 					#[cfg(feature = "logging")]
-		// 					log::warn!("RPC failure: {}", &e);
-		// 					crate::Error::Node(e.to_string())
-		// 				});
-		// 		// let val = res.unwrap();
-		// 		// extract_bytes(&val);
-		// //		stream::from_iter(1u8..6)
-		// 		let v = async_std::stream::repeat(Ok(vec![0u8])).take(5);
-		// 		v
+		// unimplemented!("Please use a websocket implementation for subscriptions.")
+				let key_enc = hex::encode(key);
+				#[cfg(feature = "logging")]
+				log::debug!("StorageKey encoded: {}", key_enc);
+				let mut buf;
+				let key = format!("\"{}\"", key_enc);
+				let key2 = format!("[\"{}\"]", key_enc);
+				let params = if let Some(block_hash) = as_of {
+					buf = hex::encode(block_hash);
+					buf = format!("\"{}\"", buf);
+					vec![key2.as_str(), buf.as_str()]
+				} else {	
+					
+					vec![key2.as_str()]
+				};
+				let res =
+					self.rpc.stream("state_subscribeStorage", &convert_params_raw(&params))
+						.await
+						// .map_err(|e| {
+						// 	#[cfg(feature = "logging")]
+						// 	log::warn!("RPC failure: {}", &e);
+						// 	crate::Error::Node(e.to_string())
+						// })
+						;
+				// let val = res.unwrap();
+				// extract_bytes(&val);
+		//		stream::from_iter(1u8..6)
+				// let v = async_std::stream::repeat(Ok(vec![0u8])).take(5);
+				// v
+				res.map(|item| {
+					print!("item: {:?}", item);
+					Ok(vec![])})
 	}
 
 	//state_queryStorage for multiple keys over a hash range.

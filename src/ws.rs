@@ -13,26 +13,59 @@ use futures_util::{
 	stream::SplitSink,
 	Stream, StreamExt,
 };
+use crate::rpc::Streamable;
 use jsonrpc::{
 	error::{result_to_response, standard_error, StandardError},
 	serde_json,
 };
 
-type Id = u8;
+type Id = u16;
 
 pub struct Backend<Tx> {
 	tx: Mutex<Tx>,
 	messages: Arc<Mutex<BTreeMap<Id, oneshot::Sender<rpc::Response>>>>,
+	streams: Arc<Mutex<BTreeMap<Id, async_std::channel::Sender<rpc::Response>>>>,
 }
 
 // impl<Tx> BackendParent for Backend<Tx> where Tx: Sink<Message, Error = Error> + Unpin + Send {}
+
+impl<Tx> Streamable for Backend<Tx> 
+where
+	Tx: Sink<Message, Error = Error> + Unpin + Send,
+{
+	async fn stream(&self, method: &str, params: &str) -> async_std::channel::Receiver<jsonrpc::Response> {
+		let id = self.next_id_stream().await;
+		#[cfg(feature = "logging")]
+		log::trace!("RPC `{}` (ID={})", method, id);
+
+		// Store a sender that will notify our receiver when a matching message arrives
+		let (sender, recv) = async_std::channel::unbounded();
+		let streams = self.streams.clone();
+		streams.lock().await.insert(id, sender);
+
+		let msg = format!(
+			"{{\"id\":{}, \"jsonrpc\": \"2.0\", \"method\":\"{}\", \"params\":{}}}",
+			id, method, params
+		);
+		#[cfg(feature = "logging")]
+		log::debug!("RPC Request {} ...", &msg[..msg.len().min(150)]);
+		let _ = self.tx.lock().await.send(Message::Text(msg)).await;
+
+		recv
+		// wait for the matching response to arrive
+		// let res = recv.await;
+		// // println!("RPC response: {:?}", &res);
+		// let res = res.map_err(|_| standard_error(StandardError::InternalError, None))?;
+		// res.result.ok_or(jsonrpc::Error::Rpc(standard_error(StandardError::InternalError, None)))
+	}
+}
 
 impl<Tx> Rpc for Backend<Tx>
 where
 	Tx: Sink<Message, Error = Error> + Unpin + Send,
 {
 	async fn rpc(&self, method: &str, params: &str) -> RpcResult {
-		let id = self.next_id().await;
+		let id = self.next_id_rpc().await;
 		#[cfg(feature = "logging")]
 		log::trace!("RPC `{}` (ID={})", method, id);
 
@@ -53,14 +86,23 @@ where
 		let res = recv.await;
 		// println!("RPC response: {:?}", &res);
 		let res = res.map_err(|_| standard_error(StandardError::InternalError, None))?;
-		Ok(res.result.unwrap())
+		res.result.ok_or(jsonrpc::Error::Rpc(standard_error(StandardError::InternalError, None)))
 	}
 }
 
 impl<Tx> Backend<Tx> {
-	async fn next_id(&self) -> Id {
-		self.messages.lock().await.keys().last().unwrap_or(&0) + 1
+	/// Streams have an odd ID, RPCs have an even ID
+	async fn next_id_stream(&self) -> Id {
+		self.messages.lock().await.keys().last().unwrap_or(&1) + 2
 	}
+
+	async fn next_id_rpc(&self) -> Id {
+		self.messages.lock().await.keys().last().unwrap_or(&0) + 2
+	}
+}
+
+fn rpc_not_steam(id: Id) -> bool {
+	id % 2 == 0
 }
 
 #[cfg(not(feature = "wss"))]
@@ -69,6 +111,7 @@ pub type WS2 = futures_util::sink::SinkErrInto<
 	Message,
 	Error,
 >;
+
 #[cfg(feature = "wss")]
 pub type WS2 = futures_util::sink::SinkErrInto<
 	SplitSink<
@@ -107,18 +150,20 @@ impl Backend<WS2> {
 		let backend = Backend {
 			tx: Mutex::new(tx.sink_err_into()),
 			messages: Arc::new(Mutex::new(BTreeMap::new())),
+			streams: Arc::new(Mutex::new(BTreeMap::new()))
 		};
 
-		backend.process_incoming_messages(rx);
+		backend.spawn_process_incoming_message_loop(rx);
 
 		Ok(backend)
 	}
 
-	fn process_incoming_messages<Rx>(&self, mut rx: Rx)
+	fn spawn_process_incoming_message_loop<Rx>(&self, mut rx: Rx)
 	where
 		Rx: Stream<Item = core::result::Result<Message, WsError>> + Unpin + Send + 'static,
 	{
 		let messages = self.messages.clone();
+		let streams = self.streams.clone();
 
 		task::spawn(async move {
 			while let Some(msg) = rx.next().await {
@@ -138,11 +183,20 @@ impl Backend<WS2> {
 								let id = res.id.as_u64().unwrap() as Id;
 								#[cfg(feature = "logging")]
 								log::trace!("Answering request {}", id);
-								let mut messages = messages.lock().await;
-								if let Some(channel) = messages.remove(&id) {
-									channel.send(res).expect("receiver waiting");
-									#[cfg(feature = "logging")]
-									log::debug!("Answered request id: {}", id);
+								if rpc_not_steam(id) {
+									let mut messages = messages.lock().await;
+									if let Some(channel) = messages.remove(&id) {
+										channel.send(res).expect("receiver waiting");
+										#[cfg(feature = "logging")]
+										log::debug!("Answered request id: {}", id);
+									} 
+								} else {
+									let mut streams = streams.lock().await;
+									if let Some(channel) = streams.get_mut(&id) {
+										channel.send(res).await.expect("receiver waiting");
+										#[cfg(feature = "logging")]
+										log::debug!("Stream response for request id: {}", id);
+									} 
 								}
 							}
 						}
@@ -175,6 +229,7 @@ mod tests {
 		ws,
 		ws::{Backend, WS2},
 	};
+	use async_std::stream::StreamExt;
 
 	fn init() {
 		let _ = env_logger::builder().is_test(true).try_init();
@@ -268,5 +323,44 @@ mod tests {
 			async_std::task::block_on(parachain.query_storage(&key[..], None)).unwrap();
 		assert!(as_of_events.len() > 10);
 		// This is statemint's scale encoded parachain id (1000)
+	}
+
+	#[test]
+	fn can_get_state_changes() {
+		init();
+		async_std::task::block_on(testy());
+	}
+
+	async fn testy() {
+		let key = "26aa394eea5630e07c48ae0c9558cef780d41e5e16056765bc8461851072c9d7";
+		let key = hex::decode(key).unwrap();
+		let parachain = polkadot_backend();
+
+		let mut payload_stream =
+			async_std::task::block_on(parachain.subscribe_storage( &key[..], None));
+
+		let n = payload_stream.next().await;
+		println!("{:?}", n);
+	}
+
+	#[test]
+	fn can_get_state_changes_asof() {
+		init();
+		async_std::task::block_on(testy_asof());
+	}
+
+	async fn testy_asof() {
+		let block_hash =
+			hex::decode("e33568bff8e6f30fee6f217a93523a6b29c31c8fe94c076d818b97b97cfd3a16")
+				.unwrap();
+		let key = "26aa394eea5630e07c48ae0c9558cef780d41e5e16056765bc8461851072c9d7";
+		let key = hex::decode(key).unwrap();
+		let parachain = polkadot_backend();
+
+		let mut payload_stream =
+			async_std::task::block_on(parachain.subscribe_storage( &key[..], Some(&block_hash)));
+
+		let n = payload_stream.next().await;
+		println!("{:?}", n);
 	}
 }
