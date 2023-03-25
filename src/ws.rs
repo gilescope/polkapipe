@@ -1,5 +1,4 @@
 use crate::{
-	prelude::*,
 	rpc::{self, Rpc, RpcResult},
 	Error,
 };
@@ -160,17 +159,31 @@ impl Backend<WS2> {
 	}
 }
 
+#[cfg(all(feature = "ws", not(feature = "wss")))]
+#[cfg(test)]
+mod tests {
+	#[test]
+	fn can_get_metadata() {
+		unimplemented!("Use 'wss' feature for testing rather than 'ws'.");
+	}
+}
+
 #[cfg(feature = "wss")]
 #[cfg(test)]
 mod tests {
-	use crate::{ws, ws::WS2, Backend};
+	use crate::{
+		ws,
+		ws::{Backend, WS2},
+	};
 
 	fn init() {
 		let _ = env_logger::builder().is_test(true).try_init();
 	}
 
-	fn polkadot_backend() -> ws::Backend<WS2> {
-		async_std::task::block_on(crate::ws::Backend::new("wss://rpc.polkadot.io")).unwrap()
+	fn polkadot_backend() -> crate::PolkaPipe<Backend<WS2>> {
+		let backend =
+			async_std::task::block_on(crate::ws::Backend::new("wss://rpc.polkadot.io")).unwrap();
+		crate::PolkaPipe { rpc: backend }
 	}
 
 	#[test]
@@ -249,9 +262,7 @@ mod tests {
 		init();
 		let key = "26aa394eea5630e07c48ae0c9558cef780d41e5e16056765bc8461851072c9d7";
 		let key = hex::decode(key).unwrap();
-		let parachain =
-			async_std::task::block_on(crate::ws::Backend::new("wss://rpc.polkadot.io"))
-				.unwrap();
+		let parachain = polkadot_backend();
 
 		let as_of_events =
 			async_std::task::block_on(parachain.query_storage(&key[..], None)).unwrap();

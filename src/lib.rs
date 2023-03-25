@@ -1,4 +1,5 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+#![allow(incomplete_features)]
 #![feature(async_fn_in_trait)]
 /*!
 Polkapipe is a fork of Sube that has few deps with multi-backend support
@@ -109,8 +110,8 @@ mod rpc;
 // 	async fn query_metadata(&self, as_of: Option<&[u8]>) -> crate::Result<Vec<u8>>;
 
 // 	/// E.g. method = "Metadata_metadata" format: CamelCase_snake_case
-// 	async fn query_state_call(&self, method: &str, key: &[u8], as_of: Option<&[u8]>) -> crate::Result<Vec<u8>>;
-// }
+// 	async fn query_state_call(&self, method: &str, key: &[u8], as_of: Option<&[u8]>) ->
+// crate::Result<Vec<u8>>; }
 
 /// A Dummy backend for offline querying of metadata
 // pub struct Offline(pub Vec<u8>);
@@ -147,8 +148,8 @@ mod rpc;
 // 		Ok(self.0.clone())
 // 	}
 
-// 	async fn query_state_call(&self, _method: &str, _key: &[u8], _as_of: Option<&[u8]>) -> Result<Vec<u8>> {
-// 		Err(Error::ChainUnavailable)
+// 	async fn query_state_call(&self, _method: &str, _key: &[u8], _as_of: Option<&[u8]>) ->
+// Result<Vec<u8>> { 		Err(Error::ChainUnavailable)
 // 	}
 
 // 	async fn submit<T>(&self, _ext: impl AsRef<[u8]> + Send) -> Result<()> {
