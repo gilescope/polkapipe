@@ -1,5 +1,5 @@
 use crate::{
-	rpc::{self, Rpc, RpcResult},
+	rpc::{self, extract_subscription, Rpc, RpcResult, Streamable},
 	Error,
 };
 use alloc::{collections::BTreeMap, sync::Arc};
@@ -13,7 +13,6 @@ use futures_util::{
 	stream::SplitSink,
 	Stream, StreamExt,
 };
-use crate::rpc::Streamable;
 use jsonrpc::{
 	error::{result_to_response, standard_error, StandardError},
 	serde_json,
@@ -24,39 +23,36 @@ type Id = u16;
 pub struct Backend<Tx> {
 	tx: Mutex<Tx>,
 	messages: Arc<Mutex<BTreeMap<Id, oneshot::Sender<rpc::Response>>>>,
-	streams: Arc<Mutex<BTreeMap<Id, async_std::channel::Sender<rpc::Response>>>>,
+	streams: Arc<Mutex<BTreeMap<String, async_std::channel::Sender<StateChanges>>>>,
+}
+
+/// Scale state changes
+#[derive(Debug)]
+pub struct StateChanges {
+	pub block: Vec<u8>,
+	pub changes: Vec<(Vec<u8>, Vec<u8>)>,
 }
 
 // impl<Tx> BackendParent for Backend<Tx> where Tx: Sink<Message, Error = Error> + Unpin + Send {}
 
-impl<Tx> Streamable for Backend<Tx> 
+impl<Tx> Streamable for Backend<Tx>
 where
 	Tx: Sink<Message, Error = Error> + Unpin + Send,
 {
-	async fn stream(&self, method: &str, params: &str) -> async_std::channel::Receiver<jsonrpc::Response> {
-		let id = self.next_id_stream().await;
-		#[cfg(feature = "logging")]
-		log::trace!("RPC `{}` (ID={})", method, id);
-
-		// Store a sender that will notify our receiver when a matching message arrives
+	async fn stream(
+		&self,
+		method: &str,
+		params: &str,
+	) -> async_std::channel::Receiver<StateChanges> {
+		let result = self.rpc(method, params).await;
 		let (sender, recv) = async_std::channel::unbounded();
-		let streams = self.streams.clone();
-		streams.lock().await.insert(id, sender);
-
-		let msg = format!(
-			"{{\"id\":{}, \"jsonrpc\": \"2.0\", \"method\":\"{}\", \"params\":{}}}",
-			id, method, params
-		);
-		#[cfg(feature = "logging")]
-		log::debug!("RPC Request {} ...", &msg[..msg.len().min(150)]);
-		let _ = self.tx.lock().await.send(Message::Text(msg)).await;
+		if let Ok(result_subscription) = result {
+			if let Ok(result) = extract_subscription(&result_subscription) {
+				self.streams.lock().await.insert(result.to_owned(), sender);
+			}
+		}
 
 		recv
-		// wait for the matching response to arrive
-		// let res = recv.await;
-		// // println!("RPC response: {:?}", &res);
-		// let res = res.map_err(|_| standard_error(StandardError::InternalError, None))?;
-		// res.result.ok_or(jsonrpc::Error::Rpc(standard_error(StandardError::InternalError, None)))
 	}
 }
 
@@ -65,7 +61,7 @@ where
 	Tx: Sink<Message, Error = Error> + Unpin + Send,
 {
 	async fn rpc(&self, method: &str, params: &str) -> RpcResult {
-		let id = self.next_id_rpc().await;
+		let id = self.next_id().await;
 		#[cfg(feature = "logging")]
 		log::trace!("RPC `{}` (ID={})", method, id);
 
@@ -86,23 +82,15 @@ where
 		let res = recv.await;
 		// println!("RPC response: {:?}", &res);
 		let res = res.map_err(|_| standard_error(StandardError::InternalError, None))?;
-		res.result.ok_or(jsonrpc::Error::Rpc(standard_error(StandardError::InternalError, None)))
+		res.result
+			.ok_or(jsonrpc::Error::Rpc(standard_error(StandardError::InternalError, None)))
 	}
 }
 
 impl<Tx> Backend<Tx> {
-	/// Streams have an odd ID, RPCs have an even ID
-	async fn next_id_stream(&self) -> Id {
-		self.messages.lock().await.keys().last().unwrap_or(&1) + 2
+	async fn next_id(&self) -> Id {
+		self.messages.lock().await.keys().last().unwrap_or(&0) + 1
 	}
-
-	async fn next_id_rpc(&self) -> Id {
-		self.messages.lock().await.keys().last().unwrap_or(&0) + 2
-	}
-}
-
-fn rpc_not_steam(id: Id) -> bool {
-	id % 2 == 0
 }
 
 #[cfg(not(feature = "wss"))]
@@ -150,7 +138,7 @@ impl Backend<WS2> {
 		let backend = Backend {
 			tx: Mutex::new(tx.sink_err_into()),
 			messages: Arc::new(Mutex::new(BTreeMap::new())),
-			streams: Arc::new(Mutex::new(BTreeMap::new()))
+			streams: Arc::new(Mutex::new(BTreeMap::new())),
 		};
 
 		backend.spawn_process_incoming_message_loop(rx);
@@ -183,20 +171,76 @@ impl Backend<WS2> {
 								let id = res.id.as_u64().unwrap() as Id;
 								#[cfg(feature = "logging")]
 								log::trace!("Answering request {}", id);
-								if rpc_not_steam(id) {
-									let mut messages = messages.lock().await;
-									if let Some(channel) = messages.remove(&id) {
-										channel.send(res).expect("receiver waiting");
-										#[cfg(feature = "logging")]
-										log::debug!("Answered request id: {}", id);
-									} 
-								} else {
-									let mut streams = streams.lock().await;
-									if let Some(channel) = streams.get_mut(&id) {
-										channel.send(res).await.expect("receiver waiting");
-										#[cfg(feature = "logging")]
-										log::debug!("Stream response for request id: {}", id);
-									} 
+								
+								let mut messages = messages.lock().await;
+								if let Some(channel) = messages.remove(&id) {
+									channel.send(res).expect("receiver waiting");
+									#[cfg(feature = "logging")]
+									log::debug!("Answered request id: {}", id);
+								}
+							} else {
+								#[cfg(feature = "logging")]
+								log::debug!("Got WS message without id: {}", msg);
+
+								let res: Result<serde_json::Value, _> = serde_json::from_str(msg);
+
+								if let Ok(serde_json::Value::Object(map)) = res {
+									if let Some(serde_json::Value::Object(params_map)) =
+										map.get("params")
+									{
+										if let Some(serde_json::Value::String(subscription_id)) =
+											params_map.get("subscription")
+										{
+											if let Some(serde_json::Value::Object(result)) =
+												params_map.get("result")
+											{
+												if let Some(serde_json::Value::String(block)) =
+													result.get("block")
+												{
+													if let Some(serde_json::Value::Array(changes)) =
+														result.get("changes")
+													{
+														debug_assert!(block.starts_with("0x"));
+														let block =
+															hex::decode(&block[2..]).unwrap();
+														let mut state_changes =
+															StateChanges { block, changes: vec![] };
+
+														for change in changes {
+															if let serde_json::Value::Array(
+																key_val,
+															) = change
+															{
+																debug_assert!(key_val.len() == 2);
+																if let serde_json::Value::String(
+																	key,
+																) = &change[0]
+																{
+																	let key =
+																		hex::decode(&key[2..])
+																			.unwrap();
+																	if let serde_json::Value::String(value) = &change[1] {
+																		let value = hex::decode(&value[2..]).unwrap();
+																		
+																		state_changes.changes.push((key, value));
+																	}
+																}
+															}
+														}
+
+														let mut streams = streams.lock().await;
+														let sender = streams
+															.get_mut(subscription_id)
+															.unwrap();
+														sender
+															.send(state_changes)
+															.await
+															.expect("receiver waiting");
+													}
+												}
+											}
+										}
+									}
 								}
 							}
 						}
@@ -225,10 +269,7 @@ mod tests {
 #[cfg(feature = "wss")]
 #[cfg(test)]
 mod tests {
-	use crate::{
-		ws,
-		ws::{Backend, WS2},
-	};
+	use crate::ws::{Backend, WS2};
 	use async_std::stream::StreamExt;
 
 	fn init() {
@@ -337,30 +378,35 @@ mod tests {
 		let parachain = polkadot_backend();
 
 		let mut payload_stream =
-			async_std::task::block_on(parachain.subscribe_storage( &key[..], None));
+			async_std::task::block_on(parachain.subscribe_storage(&[&key[..]], None));
 
-		let n = payload_stream.next().await;
-		println!("{:?}", n);
+		for _ in 0..2 {
+			let n = payload_stream.next().await.unwrap();
+			println!("block #{}", hex::encode(&n.block));
+			for c in n.changes {
+				println!("key: {}", hex::encode(&c.0));
+			}
+		}
 	}
 
-	#[test]
-	fn can_get_state_changes_asof() {
-		init();
-		async_std::task::block_on(testy_asof());
-	}
+	// #[test]
+	// fn can_get_state_changes_asof() {
+	// 	init();
+	// 	async_std::task::block_on(testy_asof());
+	// }
 
-	async fn testy_asof() {
-		let block_hash =
-			hex::decode("e33568bff8e6f30fee6f217a93523a6b29c31c8fe94c076d818b97b97cfd3a16")
-				.unwrap();
-		let key = "26aa394eea5630e07c48ae0c9558cef780d41e5e16056765bc8461851072c9d7";
-		let key = hex::decode(key).unwrap();
-		let parachain = polkadot_backend();
+	// async fn testy_asof() {
+	// 	let block_hash =
+	// 		hex::decode("e33568bff8e6f30fee6f217a93523a6b29c31c8fe94c076d818b97b97cfd3a16")
+	// 			.unwrap();
+	// 	let key = "26aa394eea5630e07c48ae0c9558cef780d41e5e16056765bc8461851072c9d7";
+	// 	let key = hex::decode(key).unwrap();
+	// 	let parachain = polkadot_backend();
 
-		let mut payload_stream =
-			async_std::task::block_on(parachain.subscribe_storage( &key[..], Some(&block_hash)));
+	// 	let mut payload_stream =
+	// 		async_std::task::block_on(parachain.subscribe_storage(&[&key[..]], Some(&block_hash)));
 
-		let n = payload_stream.next().await;
-		println!("{:?}", n);
-	}
+	// 	let n = payload_stream.next().await;
+	// 	println!("{:?}", n);
+	// }
 }
