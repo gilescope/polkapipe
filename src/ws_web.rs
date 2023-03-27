@@ -1,8 +1,9 @@
 use crate::{
-	rpc::{self, Rpc, RpcResult},
+	alloc::borrow::ToOwned,
+	rpc::{self, extract_subscription, parse_changes, Rpc, RpcResult, StateChanges, Streamable},
 	Error,
 };
-use alloc::{boxed::Box, collections::BTreeMap, sync::Arc};
+use alloc::{boxed::Box, collections::BTreeMap, string::String, sync::Arc};
 use async_mutex::Mutex;
 use jsonrpc::serde_json;
 #[cfg(feature = "logging")]
@@ -16,6 +17,26 @@ type Id = u8;
 pub struct Backend {
 	stream: WebSocket,
 	messages: Arc<Mutex<BTreeMap<Id, async_oneshot::Sender<rpc::Response>>>>,
+	streams: Arc<Mutex<BTreeMap<String, async_std::channel::Sender<StateChanges>>>>,
+}
+
+impl Streamable for Backend
+{
+	async fn stream(
+		&self,
+		method: &str,
+		params: &str,
+	) -> async_std::channel::Receiver<StateChanges> {
+		let result = self.rpc(method, params).await;
+		let (sender, recv) = async_std::channel::unbounded();
+		if let Ok(result_subscription) = result {
+			if let Ok(result) = extract_subscription(&result_subscription) {
+				self.streams.lock().await.insert(result.to_owned(), sender);
+			}
+		}
+
+		recv
+	}
 }
 
 // #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
@@ -69,23 +90,39 @@ impl Backend {
 				#[cfg(feature = "logging")]
 				info!("Connection successfully created");
 
-				let backend = Backend { stream, messages: Default::default() };
+				let backend =
+					Backend { stream, messages: Default::default(), streams: Default::default() };
 
 				let messages = backend.messages.clone();
+				let streams = backend.streams.clone();
 				let onmessage_callback: Closure<dyn Fn(MessageEvent)> =
 					Closure::wrap(Box::new(move |e: MessageEvent| {
+						use pollster::FutureExt as _;
 						if let Ok(txt) = e.data().dyn_into::<js_sys::JsString>() {
 							let msg: alloc::string::String = txt.into();
 							let res: rpc::Response = serde_json::from_str(&msg).unwrap();
 							if res.id.is_u64() {
 								let id = res.id.as_u64().unwrap() as Id;
 
-								use pollster::FutureExt as _;
 								let mut messages = messages.lock().block_on();
 								if let Some(mut channel) = messages.remove(&id) {
 									channel.send(res).expect("receiver waiting");
 									#[cfg(feature = "logging")]
 									log::debug!("Answered request id: {}", id);
+								}
+							} else {
+								let res: Result<serde_json::Value, _> = serde_json::from_str(&msg);
+								if let Ok(res) = res {
+									if let Some((subscription_id, state_changes)) =
+										parse_changes(res)
+									{
+										let mut streams = streams.lock().block_on();
+										let sender = streams.get_mut(&subscription_id).unwrap();
+										sender
+											.send(state_changes)
+											.block_on()
+											.expect("receiver waiting");
+									}
 								}
 							}
 						}
@@ -112,7 +149,6 @@ mod tests {
 	use super::*;
 	use wasm_bindgen_test::*;
 	wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
-	use crate::Backend;
 
 	#[cfg(target_arch = "wasm32")]
 	pub fn set_panic_hook() {
@@ -126,10 +162,12 @@ mod tests {
 		console_error_panic_hook::set_once();
 	}
 
-	async fn polkadot_backend() -> super::Backend {
-		crate::ws_web::Backend::new(vec!["wss://rpc.polkadot.io"].as_slice())
-			.await
-			.unwrap()
+	async fn polkadot_backend() -> crate::PolkaPipe<super::Backend> {
+		crate::PolkaPipe {
+			rpc: crate::ws_web::Backend::new(vec!["wss://rpc.polkadot.io"].as_slice())
+				.await
+				.unwrap(),
+		}
 	}
 
 	#[test]
@@ -239,9 +277,11 @@ mod tests {
 		// env_logger::init();
 		let key = "0d715f2646c8f85767b5d2764bb2782604a74d81251e398fd8a0a4d55023bb3f";
 		let key = hex::decode(key).unwrap();
-		let parachain = super::Backend::new(vec!["wss://calamari-rpc.dwellir.com"].as_slice())
-			.await
-			.unwrap();
+		let parachain = crate::PolkaPipe {
+			rpc: super::Backend::new(vec!["wss://calamari-rpc.dwellir.com"].as_slice())
+				.await
+				.unwrap(),
+		};
 
 		let as_of_events = parachain.query_storage(&key[..], None).await.unwrap();
 		assert_eq!(hex::decode("e8030000").unwrap(), as_of_events);

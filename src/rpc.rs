@@ -2,9 +2,15 @@ use crate::prelude::*;
 // use async_trait::async_trait;
 pub use jsonrpc::{error, Error, Request, Response};
 pub type RpcResult = Result<Box<serde_json::value::RawValue>, error::Error>;
-use crate::ws::StateChanges;
 use async_std::stream::Stream;
 use core::str::FromStr;
+
+/// Scale state changes
+#[derive(Debug)]
+pub struct StateChanges {
+	pub block: Vec<u8>,
+	pub changes: Vec<(Vec<u8>, Vec<u8>)>,
+}
 
 /// Rpc defines types of backends that are remote and talk JSONRpc
 // #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
@@ -52,7 +58,41 @@ fn extract_bytes(val: &serde_json::value::RawValue) -> crate::Result<Vec<u8>> {
 	}
 }
 
-// Not hex, these are likely ss58 keys?
+pub fn parse_changes(value: serde_json::Value) -> Option<(String, StateChanges)> {
+	if let serde_json::Value::Object(map) = value {
+		if let Some(serde_json::Value::Object(params_map)) = map.get("params") {
+			if let Some(serde_json::Value::String(subscription_id)) = params_map.get("subscription")
+			{
+				if let Some(serde_json::Value::Object(result)) = params_map.get("result") {
+					if let Some(serde_json::Value::String(block)) = result.get("block") {
+						if let Some(serde_json::Value::Array(changes)) = result.get("changes") {
+							debug_assert!(block.starts_with("0x"));
+							let block = hex::decode(&block[2..]).unwrap();
+							let mut state_changes = StateChanges { block, changes: vec![] };
+
+							for change in changes {
+								if let serde_json::Value::Array(key_val) = change {
+									debug_assert!(key_val.len() == 2);
+									if let serde_json::Value::String(key) = &change[0] {
+										let key = hex::decode(&key[2..]).unwrap();
+										if let serde_json::Value::String(value) = &change[1] {
+											let value = hex::decode(&value[2..]).unwrap();
+											state_changes.changes.push((key, value));
+										}
+									}
+								}
+							}
+							return Some((subscription_id.clone(), state_changes)) //todo clone can be ref
+						}
+					}
+				}
+			}
+		}
+	}
+	None
+}
+
+// subscription id used to unsubscribe
 pub(crate) fn extract_subscription(val: &serde_json::value::RawValue) -> crate::Result<&str> {
 	let val2 = serde_json::Value::from_str(val.get());
 	if let Some(_result_val) = val2.unwrap().get("result") {

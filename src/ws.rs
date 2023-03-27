@@ -1,5 +1,5 @@
 use crate::{
-	rpc::{self, extract_subscription, Rpc, RpcResult, Streamable},
+	rpc::{self, extract_subscription, parse_changes, Rpc, RpcResult, StateChanges, Streamable},
 	Error,
 };
 use alloc::{collections::BTreeMap, sync::Arc};
@@ -24,13 +24,6 @@ pub struct Backend<Tx> {
 	tx: Mutex<Tx>,
 	messages: Arc<Mutex<BTreeMap<Id, oneshot::Sender<rpc::Response>>>>,
 	streams: Arc<Mutex<BTreeMap<String, async_std::channel::Sender<StateChanges>>>>,
-}
-
-/// Scale state changes
-#[derive(Debug)]
-pub struct StateChanges {
-	pub block: Vec<u8>,
-	pub changes: Vec<(Vec<u8>, Vec<u8>)>,
 }
 
 // impl<Tx> BackendParent for Backend<Tx> where Tx: Sink<Message, Error = Error> + Unpin + Send {}
@@ -171,7 +164,6 @@ impl Backend<WS2> {
 								let id = res.id.as_u64().unwrap() as Id;
 								#[cfg(feature = "logging")]
 								log::trace!("Answering request {}", id);
-								
 								let mut messages = messages.lock().await;
 								if let Some(channel) = messages.remove(&id) {
 									channel.send(res).expect("receiver waiting");
@@ -184,62 +176,13 @@ impl Backend<WS2> {
 
 								let res: Result<serde_json::Value, _> = serde_json::from_str(msg);
 
-								if let Ok(serde_json::Value::Object(map)) = res {
-									if let Some(serde_json::Value::Object(params_map)) =
-										map.get("params")
+								if let Ok(res) = res {
+									if let Some((subscription_id, state_changes)) =
+										parse_changes(res)
 									{
-										if let Some(serde_json::Value::String(subscription_id)) =
-											params_map.get("subscription")
-										{
-											if let Some(serde_json::Value::Object(result)) =
-												params_map.get("result")
-											{
-												if let Some(serde_json::Value::String(block)) =
-													result.get("block")
-												{
-													if let Some(serde_json::Value::Array(changes)) =
-														result.get("changes")
-													{
-														debug_assert!(block.starts_with("0x"));
-														let block =
-															hex::decode(&block[2..]).unwrap();
-														let mut state_changes =
-															StateChanges { block, changes: vec![] };
-
-														for change in changes {
-															if let serde_json::Value::Array(
-																key_val,
-															) = change
-															{
-																debug_assert!(key_val.len() == 2);
-																if let serde_json::Value::String(
-																	key,
-																) = &change[0]
-																{
-																	let key =
-																		hex::decode(&key[2..])
-																			.unwrap();
-																	if let serde_json::Value::String(value) = &change[1] {
-																		let value = hex::decode(&value[2..]).unwrap();
-																		
-																		state_changes.changes.push((key, value));
-																	}
-																}
-															}
-														}
-
-														let mut streams = streams.lock().await;
-														let sender = streams
-															.get_mut(subscription_id)
-															.unwrap();
-														sender
-															.send(state_changes)
-															.await
-															.expect("receiver waiting");
-													}
-												}
-											}
-										}
+										let mut streams = streams.lock().await;
+										let sender = streams.get_mut(&subscription_id).unwrap();
+										sender.send(state_changes).await.expect("receiver waiting");
 									}
 								}
 							}
