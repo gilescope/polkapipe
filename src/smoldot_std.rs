@@ -1,9 +1,8 @@
 use crate::{
 	prelude::*,
-	rpc::{self, Rpc, RpcResult},
+	rpc::{self, Rpc, RpcResult, StateChanges, Streamable},
 };
 use async_std::{sync::Mutex, task};
-use async_trait::async_trait;
 use futures::{channel::mpsc, prelude::*};
 use futures_channel::oneshot;
 use jsonrpc::{
@@ -34,6 +33,25 @@ lazy_static! {
 pub struct Backend {
 	chain_id: ChainId,
 	messages: Arc<Mutex<BTreeMap<Id, oneshot::Sender<rpc::Response>>>>,
+}
+
+impl Streamable for Backend {
+	async fn stream(
+		&self,
+		method: &str,
+		params: &str,
+	) -> async_std::channel::Receiver<StateChanges> {
+		let _result = self.rpc(method, params).await;
+		panic!("unsupported for now");
+		// let (sender, recv) = async_std::channel::unbounded();
+		// if let Ok(result_subscription) = result {
+		// 	if let Ok(result) = extract_subscription(&result_subscription) {
+		// 		self.streams.lock().await.insert(result.to_owned(), sender);
+		// 	}
+		// }
+
+		// recv
+	}
 }
 
 impl Backend {
@@ -128,24 +146,28 @@ impl Backend {
 				});
 				if res.id.is_u64() {
 					let id = res.id.as_u64().unwrap() as Id;
+					#[cfg(feature = "logging")]
 					log::trace!("Answering request {}", id);
 					let mut messages = messages.lock().await;
 					if let Some(channel) = messages.remove(&id) {
 						channel.send(res).expect("receiver waiting");
+						#[cfg(feature = "logging")]
 						log::debug!("Answered request id: {}", id);
 					}
 				}
 			}
+			#[cfg(feature = "logging")]
 			log::warn!("WS connection closed");
 		});
 	}
 }
 
-#[async_trait]
+// #[async_trait]
 impl Rpc for Backend {
 	/// HTTP based JSONRpc request expecting an hex encoded result
 	async fn rpc(&self, method: &str, params: &str) -> RpcResult {
 		let id = self.next_id().await;
+		#[cfg(feature = "logging")]
 		log::debug!("RPC `{}` (ID={})", method, id);
 
 		// Store a sender that will notify our receiver when a matching message arrives
@@ -158,6 +180,7 @@ impl Rpc for Backend {
 			id, method, params
 		);
 
+		#[cfg(feature = "logging")]
 		log::debug!("RPC Request {} ...", &msg[..msg.len().min(150)]);
 		CLIENT
 			.lock()
@@ -188,28 +211,34 @@ impl Rpc for Backend {
 /// For smoldot tests we just check that we can retrieve the latest bits.
 #[cfg(test)]
 mod tests {
-	use crate::Backend;
 	fn init() {
 		let _ = env_logger::builder().is_test(true).try_init();
 	}
 
-	async fn polkadot_backend() -> super::Backend {
+	async fn polkadot_backend() -> crate::PolkaPipe<super::Backend> {
 		if cfg!(debug_assertions) {
 			panic!("This is not the mode you are looking for. Smoldot is slow (minutes) in debug mode.");
 		}
-		super::Backend::new(include_str!("../chainspecs/polkadot.json"), None)
-			.await
-			.unwrap()
+		crate::PolkaPipe {
+			rpc: super::Backend::new(include_str!("../chainspecs/polkadot.json"), None)
+				.await
+				.unwrap(),
+		}
 	}
 
-	async fn statemint_backend() -> super::Backend {
+	async fn statemint_backend() -> crate::PolkaPipe<super::Backend> {
 		if cfg!(debug_assertions) {
 			panic!("This is not the mode you are looking for. Smoldot is slow (minutes) in debug mode.");
 		}
 		let relay_backend = polkadot_backend().await;
-		super::Backend::new(include_str!("../chainspecs/statemint.json"), Some(relay_backend))
+		crate::PolkaPipe {
+			rpc: super::Backend::new(
+				include_str!("../chainspecs/statemint.json"),
+				Some(relay_backend.rpc),
+			)
 			.await
-			.unwrap()
+			.unwrap(),
+		}
 	}
 
 	#[test]

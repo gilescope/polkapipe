@@ -20,8 +20,7 @@ pub struct Backend {
 	streams: Arc<Mutex<BTreeMap<String, async_std::channel::Sender<StateChanges>>>>,
 }
 
-impl Streamable for Backend
-{
+impl Streamable for Backend {
 	async fn stream(
 		&self,
 		method: &str,

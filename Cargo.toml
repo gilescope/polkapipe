@@ -75,7 +75,8 @@ ws = [
 logging = ["log", "console_log"]
 wss = ["ws", "async-tls", "async-tungstenite/async-tls"]
 ws-web = ["async-mutex","async-std/alloc","async-std/std"]
-smoldot-std = ["smoldot-light", "futures", "lazy_static"]
+smoldot-std = ["smoldot-light", "futures", "lazy_static", "std", "futures-util",
+    "futures-channel", "async-mutex", "async-std", "async-std/alloc","async-std/std"]
 
 [package.metadata.docs.rs]
 features = ["http"]
