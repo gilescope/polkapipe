@@ -20,7 +20,7 @@ jobs:
     - if: ${{ matrix.os == 'ubuntu-latest' }}
       run: sudo apt-get install libxcb-shape0-dev libxcb-xfixes0-dev
     - name: Run tests
-      run: cargo test --release --verbose --features smoldot-std,http,wss,ws
+      run: cargo +nightly test --release --verbose --features smoldot-std,http,wss,ws
   browser:
     runs-on: ubuntu-latest
     steps:
@@ -28,8 +28,8 @@ jobs:
     - name: Install
       run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
     - name: add target
-      run: rustup target add wasm32-unknown-unknown
+      run: rustup target add wasm32-unknown-unknown --toolchain nightly
     - name: check http-web
-      run: cargo check --verbose --features http-web --target wasm32-unknown-unknown
+      run: cargo +nightly check --verbose --features http-web --target wasm32-unknown-unknown
     - name: check ws-web
       run: wasm-pack test --headless --firefox --no-default-features --features ws-web
