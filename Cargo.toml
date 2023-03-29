@@ -62,8 +62,8 @@ wasm-bindgen-test = "0.3"
 
 [features]
 default = ["std", "ws"]
-http = ["surf/h1-client-rustls"]
-http-web = ["surf/wasm-client"]
+http = ["surf/h1-client-rustls",  "async-std", ]
+http-web = ["surf/wasm-client",  "async-std", ]
 std = []
 ws = [
     "async-std",

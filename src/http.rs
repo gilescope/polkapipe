@@ -1,4 +1,7 @@
-use crate::prelude::*;
+use crate::{
+	prelude::*,
+	rpc::{StateChanges, Streamable},
+};
 use core::{convert::TryInto, fmt};
 use jsonrpc::{
 	error::{standard_error, StandardError},
@@ -10,6 +13,25 @@ use crate::rpc::{self, Rpc, RpcResult};
 
 #[derive(Debug)]
 pub struct Backend(Url);
+
+impl Streamable for Backend {
+	async fn stream(
+		&self,
+		method: &str,
+		params: &str,
+	) -> async_std::channel::Receiver<StateChanges> {
+		let _result = self.rpc(method, params).await;
+		panic!("unsupported for now");
+		// let (sender, recv) = async_std::channel::unbounded();
+		// if let Ok(result_subscription) = result {
+		// 	if let Ok(result) = extract_subscription(&result_subscription) {
+		// 		self.streams.lock().await.insert(result.to_owned(), sender);
+		// 	}
+		// }
+
+		// recv
+	}
+}
 
 impl Backend {
 	pub fn new<U>(url: U) -> Self
@@ -151,7 +173,7 @@ mod tests {
 		let prefix = "c191b96685aad1250b47d6bc2e95392e3a200eaa6dca8bccfaa51cfd6d558a6a";
 		let block_bytes =
 			async_std::task::block_on(polkadot_backend().state_get_keys(prefix, None)).unwrap();
-		println!("{:?}", block_bytes);
+		// println!("{:?}", block_bytes);
 		assert!(matches!(block_bytes, serde_json::value::Value::Array(_)));
 	}
 
@@ -166,7 +188,7 @@ mod tests {
 		let block_bytes =
 			async_std::task::block_on(polkadot_backend().state_get_keys_paged(prefix, 0, None))
 				.unwrap();
-		println!("{:?}", block_bytes);
+		// println!("{:?}", block_bytes);
 		assert!(matches!(block_bytes, serde_json::value::Value::Array(_)));
 	}
 
