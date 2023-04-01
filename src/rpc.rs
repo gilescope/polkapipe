@@ -58,7 +58,7 @@ fn extract_bytes(val: &serde_json::value::RawValue) -> crate::Result<Vec<u8>> {
 	}
 }
 
-pub fn parse_changes(value: serde_json::Value) -> Option<(String, StateChanges)> {
+pub fn parse_changes(value: &serde_json::Value) -> Option<(&str, StateChanges)> {
 	if let serde_json::Value::Object(map) = value {
 		if let Some(serde_json::Value::Object(params_map)) = map.get("params") {
 			if let Some(serde_json::Value::String(subscription_id)) = params_map.get("subscription")
@@ -82,7 +82,7 @@ pub fn parse_changes(value: serde_json::Value) -> Option<(String, StateChanges)>
 									}
 								}
 							}
-							return Some((subscription_id.clone(), state_changes)) //todo clone can be ref
+							return Some((subscription_id.as_str(), state_changes))
 						}
 					}
 				}

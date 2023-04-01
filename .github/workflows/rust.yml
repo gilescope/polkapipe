@@ -37,3 +37,5 @@ jobs:
       run: cargo +nightly check --verbose --features http-web --target wasm32-unknown-unknown
     - name: check ws-web
       run: wasm-pack test --headless --firefox --no-default-features --features ws-web
+    - name: check ws-web
+      run: wasm-pack test --headless --chrome --no-default-features --features ws-web

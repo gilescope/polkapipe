@@ -5,6 +5,7 @@ use crate::{
 };
 use alloc::{boxed::Box, collections::BTreeMap, string::String, sync::Arc};
 use async_mutex::Mutex;
+use core::time::Duration;
 use jsonrpc::serde_json;
 #[cfg(feature = "logging")]
 use log::info;
@@ -64,7 +65,8 @@ impl Rpc for Backend {
 			#[cfg(feature = "logging")]
 			log::trace!("RPC got lock now sending {} ...", &msg[..50]);
 			while lock.ready_state() < web_sys::WebSocket::OPEN {
-				//TODO sleep
+				let delay = 300;
+				async_std::task::sleep(Duration::from_millis(delay as u64)).await;
 			}
 
 			lock.send_with_str(&msg).unwrap();
@@ -113,10 +115,10 @@ impl Backend {
 								let res: Result<serde_json::Value, _> = serde_json::from_str(&msg);
 								if let Ok(res) = res {
 									if let Some((subscription_id, state_changes)) =
-										parse_changes(res)
+										parse_changes(&res)
 									{
 										let mut streams = streams.lock().block_on();
-										let sender = streams.get_mut(&subscription_id).unwrap();
+										let sender = streams.get_mut(subscription_id).unwrap();
 										sender
 											.send(state_changes)
 											.block_on()
@@ -149,6 +151,10 @@ mod tests {
 	use wasm_bindgen_test::*;
 	wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
 
+	#[test]
+	#[wasm_bindgen_test]
+	fn no_op() {}
+
 	#[cfg(target_arch = "wasm32")]
 	pub fn set_panic_hook() {
 		// When the `console_error_panic_hook` feature is enabled, we can call the
@@ -179,7 +185,8 @@ mod tests {
 		set_panic_hook();
 		// wasm-pack test --headless --firefox --no-default-features --features ws-web
 
-		let latest_metadata = polkadot_backend().await.query_metadata(None).await.unwrap();
+		let backend = polkadot_backend().await;
+		let latest_metadata = backend.query_metadata(None).await.unwrap();
 		assert!(latest_metadata.len() > 0);
 	}
 
