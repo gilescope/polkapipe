@@ -1,12 +1,10 @@
 use crate::{
-	prelude::*,
-	rpc::{self, Rpc, RpcResult},
-	BackendParent, Error,
+	rpc::{self, extract_subscription, parse_changes, Rpc, RpcResult, StateChanges, Streamable},
+	Error,
 };
 use alloc::{collections::BTreeMap, sync::Arc};
 use async_mutex::Mutex;
 use async_std::task;
-use async_trait::async_trait;
 use async_tungstenite::tungstenite::{Error as WsError, Message};
 use core::time::Duration;
 use futures_channel::oneshot;
@@ -20,16 +18,37 @@ use jsonrpc::{
 	serde_json,
 };
 
-type Id = u8;
+type Id = u16;
 
 pub struct Backend<Tx> {
 	tx: Mutex<Tx>,
 	messages: Arc<Mutex<BTreeMap<Id, oneshot::Sender<rpc::Response>>>>,
+	streams: Arc<Mutex<BTreeMap<String, async_std::channel::Sender<StateChanges>>>>,
 }
 
-impl<Tx> BackendParent for Backend<Tx> where Tx: Sink<Message, Error = Error> + Unpin + Send {}
+// impl<Tx> BackendParent for Backend<Tx> where Tx: Sink<Message, Error = Error> + Unpin + Send {}
 
-#[async_trait]
+impl<Tx> Streamable for Backend<Tx>
+where
+	Tx: Sink<Message, Error = Error> + Unpin + Send,
+{
+	async fn stream(
+		&self,
+		method: &str,
+		params: &str,
+	) -> async_std::channel::Receiver<StateChanges> {
+		let result = self.rpc(method, params).await;
+		let (sender, recv) = async_std::channel::unbounded();
+		if let Ok(result_subscription) = result {
+			if let Ok(result) = extract_subscription(&result_subscription) {
+				self.streams.lock().await.insert(result.to_owned(), sender);
+			}
+		}
+
+		recv
+	}
+}
+
 impl<Tx> Rpc for Backend<Tx>
 where
 	Tx: Sink<Message, Error = Error> + Unpin + Send,
@@ -56,7 +75,8 @@ where
 		let res = recv.await;
 		// println!("RPC response: {:?}", &res);
 		let res = res.map_err(|_| standard_error(StandardError::InternalError, None))?;
-		Ok(res.result.unwrap())
+		res.result
+			.ok_or(jsonrpc::Error::Rpc(standard_error(StandardError::InternalError, None)))
 	}
 }
 
@@ -72,6 +92,7 @@ pub type WS2 = futures_util::sink::SinkErrInto<
 	Message,
 	Error,
 >;
+
 #[cfg(feature = "wss")]
 pub type WS2 = futures_util::sink::SinkErrInto<
 	SplitSink<
@@ -88,7 +109,7 @@ pub type WS2 = futures_util::sink::SinkErrInto<
 >;
 
 impl Backend<WS2> {
-	pub async fn new_ws2(url: &str) -> core::result::Result<Self, WsError> {
+	pub async fn new(url: &str) -> core::result::Result<Self, WsError> {
 		#[cfg(feature = "logging")]
 		log::trace!("WS connecting to {}", url);
 
@@ -110,18 +131,20 @@ impl Backend<WS2> {
 		let backend = Backend {
 			tx: Mutex::new(tx.sink_err_into()),
 			messages: Arc::new(Mutex::new(BTreeMap::new())),
+			streams: Arc::new(Mutex::new(BTreeMap::new())),
 		};
 
-		backend.process_incoming_messages(rx);
+		backend.spawn_process_incoming_message_loop(rx);
 
 		Ok(backend)
 	}
 
-	fn process_incoming_messages<Rx>(&self, mut rx: Rx)
+	fn spawn_process_incoming_message_loop<Rx>(&self, mut rx: Rx)
 	where
 		Rx: Stream<Item = core::result::Result<Message, WsError>> + Unpin + Send + 'static,
 	{
 		let messages = self.messages.clone();
+		let streams = self.streams.clone();
 
 		task::spawn(async move {
 			while let Some(msg) = rx.next().await {
@@ -147,12 +170,27 @@ impl Backend<WS2> {
 									#[cfg(feature = "logging")]
 									log::debug!("Answered request id: {}", id);
 								}
+							} else {
+								#[cfg(feature = "logging")]
+								log::debug!("Got WS message without id: {}", msg);
+
+								let res: Result<serde_json::Value, _> = serde_json::from_str(msg);
+
+								if let Ok(res) = res {
+									if let Some((subscription_id, state_changes)) =
+										parse_changes(&res)
+									{
+										let mut streams = streams.lock().await;
+										let sender = streams.get_mut(subscription_id).unwrap();
+										sender.send(state_changes).await.expect("receiver waiting");
+									}
+								}
 							}
 						}
 					},
-					Err(err) => {
+					Err(_err) => {
 						#[cfg(feature = "logging")]
-						log::warn!("WS Error: {}", err);
+						log::warn!("WS Error: {}", _err);
 					},
 				}
 			}
@@ -162,17 +200,29 @@ impl Backend<WS2> {
 	}
 }
 
+#[cfg(all(feature = "ws", not(feature = "wss")))]
+#[cfg(test)]
+mod tests {
+	#[test]
+	fn can_get_metadata() {
+		unimplemented!("Use 'wss' feature for testing rather than 'ws'.");
+	}
+}
+
 #[cfg(feature = "wss")]
 #[cfg(test)]
 mod tests {
-	use crate::{ws, ws::WS2, Backend};
+	use crate::ws::{Backend, WS2};
+	use async_std::stream::StreamExt;
 
 	fn init() {
 		let _ = env_logger::builder().is_test(true).try_init();
 	}
 
-	fn polkadot_backend() -> ws::Backend<WS2> {
-		async_std::task::block_on(crate::ws::Backend::new_ws2("wss://rpc.polkadot.io")).unwrap()
+	fn polkadot_backend() -> crate::PolkaPipe<Backend<WS2>> {
+		let backend =
+			async_std::task::block_on(crate::ws::Backend::new("wss://rpc.polkadot.io")).unwrap();
+		crate::PolkaPipe { rpc: backend }
 	}
 
 	#[test]
@@ -251,13 +301,55 @@ mod tests {
 		init();
 		let key = "26aa394eea5630e07c48ae0c9558cef780d41e5e16056765bc8461851072c9d7";
 		let key = hex::decode(key).unwrap();
-		let parachain =
-			async_std::task::block_on(crate::ws::Backend::new_ws2("wss://rpc.polkadot.io"))
-				.unwrap();
+		let parachain = polkadot_backend();
 
 		let as_of_events =
 			async_std::task::block_on(parachain.query_storage(&key[..], None)).unwrap();
 		assert!(as_of_events.len() > 10);
 		// This is statemint's scale encoded parachain id (1000)
 	}
+
+	#[test]
+	fn can_get_state_changes() {
+		init();
+		async_std::task::block_on(testy());
+	}
+
+	async fn testy() {
+		let key = "26aa394eea5630e07c48ae0c9558cef780d41e5e16056765bc8461851072c9d7";
+		let key = hex::decode(key).unwrap();
+		let parachain = polkadot_backend();
+
+		let mut payload_stream =
+			async_std::task::block_on(parachain.subscribe_storage(&[&key[..]], None));
+
+		for _ in 0..2 {
+			let n = payload_stream.next().await.unwrap();
+			println!("block #{}", hex::encode(&n.block));
+			for c in n.changes {
+				println!("key: {}", hex::encode(&c.0));
+			}
+		}
+	}
+
+	// #[test]
+	// fn can_get_state_changes_asof() {
+	// 	init();
+	// 	async_std::task::block_on(testy_asof());
+	// }
+
+	// async fn testy_asof() {
+	// 	let block_hash =
+	// 		hex::decode("e33568bff8e6f30fee6f217a93523a6b29c31c8fe94c076d818b97b97cfd3a16")
+	// 			.unwrap();
+	// 	let key = "26aa394eea5630e07c48ae0c9558cef780d41e5e16056765bc8461851072c9d7";
+	// 	let key = hex::decode(key).unwrap();
+	// 	let parachain = polkadot_backend();
+
+	// 	let mut payload_stream =
+	// 		async_std::task::block_on(parachain.subscribe_storage(&[&key[..]], Some(&block_hash)));
+
+	// 	let n = payload_stream.next().await;
+	// 	println!("{:?}", n);
+	// }
 }

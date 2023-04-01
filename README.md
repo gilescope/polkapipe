@@ -10,6 +10,7 @@ Polkapipe supports multiple backends under different feature flags like `http`, 
 
   * few dependencies (and work in browesr)
   * endever to give you as good an error message as we can get our hands on. (work in progress)
+  * provides an interface in scale (hiding away any json or hex that might unfortunately happen under the covers. Hopefully one day direct scale responses can be got over the websocket rather than it all being text, and on that day not much should change for the client.)
 
 
 ## Wasm:
@@ -26,7 +27,11 @@ wasm-pack test --headless --firefox --no-default-features --features ws-web
 ```
 
 ## Changelog
-
+0.8:
+ * Used less async traits. Now use `PolkaPipe::<Backend>` rather than `Backend`.
+ * use nightly async trait for rpc rather than the crate.
+ * re-add submit
+ * added subscribe state (TODO: would be nice to unsubscribe when `drop`ped).
 0.7:
  * Removed ws_stream_wasm and used the underlying
 WebSocket directly. Less deps. 
