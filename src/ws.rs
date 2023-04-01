@@ -178,10 +178,10 @@ impl Backend<WS2> {
 
 								if let Ok(res) = res {
 									if let Some((subscription_id, state_changes)) =
-										parse_changes(res)
+										parse_changes(&res)
 									{
 										let mut streams = streams.lock().await;
-										let sender = streams.get_mut(&subscription_id).unwrap();
+										let sender = streams.get_mut(subscription_id).unwrap();
 										sender.send(state_changes).await.expect("receiver waiting");
 									}
 								}
