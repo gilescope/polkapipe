@@ -1955,6 +1955,7 @@ dependencies = [
  "futures",
  "futures-channel",
  "futures-util",
+ "gloo-timers",
  "hex",
  "hex-literal",
  "js-sys",
