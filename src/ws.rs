@@ -75,8 +75,9 @@ where
 		let res = recv.await;
 		// println!("RPC response: {:?}", &res);
 		let res = res.map_err(|_| standard_error(StandardError::InternalError, None))?;
-		res.result
-			.ok_or(jsonrpc::Error::Rpc(standard_error(StandardError::InternalError, None)))
+		res.result.ok_or(jsonrpc::Error::Rpc(
+			res.error.unwrap_or(standard_error(StandardError::InternalError, None)),
+		))
 	}
 }
 
