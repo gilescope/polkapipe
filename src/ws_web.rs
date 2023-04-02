@@ -157,7 +157,6 @@ mod tests {
 	use wasm_bindgen_test::*;
 	wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
 
-	#[test]
 	#[wasm_bindgen_test]
 	fn no_op() {}
 
@@ -181,7 +180,6 @@ mod tests {
 		}
 	}
 
-	#[test]
 	#[wasm_bindgen_test]
 	fn can_get_metadata() {
 		async_std::task::block_on(can_get_metadata_test());
@@ -193,10 +191,9 @@ mod tests {
 
 		let backend = polkadot_backend().await;
 		let latest_metadata = backend.query_metadata(None).await.unwrap();
-		assert!(latest_metadata.len() > 0);
+		assert!(latest_metadata.len() > 100);
 	}
 
-	#[test]
 	#[wasm_bindgen_test]
 	fn can_get_metadata_as_of() {
 		async_std::task::block_on(can_get_metadata_as_of_test());
@@ -208,10 +205,9 @@ mod tests {
 				.unwrap();
 		let as_of_metadata =
 			polkadot_backend().await.query_metadata(Some(&block_hash)).await.unwrap();
-		assert!(as_of_metadata.len() > 0);
+		assert!(as_of_metadata.len() > 100);
 	}
 
-	#[test]
 	#[wasm_bindgen_test]
 	fn can_get_block_hash() {
 		async_std::task::block_on(can_get_block_hash_test());
@@ -233,7 +229,6 @@ mod tests {
 		);
 	}
 
-	#[test]
 	#[wasm_bindgen_test]
 	fn can_get_full_block() {
 		async_std::task::block_on(can_get_full_block_test());
@@ -245,7 +240,6 @@ mod tests {
 		assert!(matches!(block_bytes, serde_json::value::Value::Object(_)));
 	}
 
-	#[test]
 	#[wasm_bindgen_test]
 	fn can_get_latest_full_block() {
 		async_std::task::block_on(can_get_latest_full_block_test());
@@ -256,7 +250,6 @@ mod tests {
 		assert!(matches!(block_bytes, serde_json::value::Value::Object(_)));
 	}
 
-	#[test]
 	#[wasm_bindgen_test]
 	fn can_get_storage_as_of() {
 		async_std::task::block_on(can_get_storage_as_of_test());
@@ -279,7 +272,6 @@ mod tests {
 		assert!(as_of_events.len() > 0);
 	}
 
-	#[test]
 	#[wasm_bindgen_test]
 	fn can_get_storage_now() {
 		async_std::task::block_on(can_get_storage_now_test());
