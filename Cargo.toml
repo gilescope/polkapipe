@@ -61,7 +61,7 @@ env_logger = "0.9"
 wasm-bindgen-test = "0.3"
 
 [features]
-default = ["std", "ws"]
+default = ["std", "wss"]
 http = ["surf/h1-client-rustls",  "async-std", ]
 http-web = ["surf/wasm-client",  "async-std", ]
 std = []
