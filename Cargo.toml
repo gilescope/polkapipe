@@ -17,7 +17,7 @@ jsonrpc = { version = "0.12.0", default-features = false }
 serde_json = { version = "1.0", default-features = false }
 
 # http backend
-surf = { version = "2.3.1", default_features = false, optional = true }
+reqwest = { version = "*", features=[ "rustls-tls" ], default_features = false, optional = true }
 
 # ws backend
 futures-channel = { version = "0.3.17", default-features = false, features = [
@@ -62,8 +62,8 @@ wasm-bindgen-test = "0.3"
 
 [features]
 default = [ "std", "wss" ]
-http = [ "async-std", "surf/h1-client-rustls" ]
-http-web = [ "async-std", "surf/wasm-client" ]
+http = [ "async-std", "reqwest" ]
+http-web = [ "async-std", "reqwest" ]
 std = []
 ws = [
 	"async-mutex",
@@ -74,7 +74,7 @@ ws = [
 ]
 logging = [ "console_log", "log" ]
 wss = [ "async-tls", "async-tungstenite/async-tls", "ws" ]
-ws-web = [ "async-mutex", "async-std/alloc", "async-std/std" ]
+ws-web = [ "async-mutex", "async-std/alloc", "async-std/std", "async-std/unstable" ]
 smoldot-std = [
 	"async-mutex",
 	"async-std",

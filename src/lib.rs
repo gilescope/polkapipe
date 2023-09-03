@@ -24,9 +24,9 @@ Creating a client is as simple as instantiating a backend and converting it to a
 ### Backend features
 
 * **http** -
-  Enables a surf based http backend.
+  Enables a reqwest based http backend.
 * **http-web** -
-  Enables surf with its web compatible backend that uses `fetch` under the hood(target `wasm32-unknown-unknown`)
+  Enables reqwest with its web compatible backend that uses `fetch` under the hood(target `wasm32-unknown-unknown`)
 * **ws** -
   Enables the websocket backend based on tungstenite
 * **wss** -
@@ -51,7 +51,7 @@ mod prelude {
 
 pub type Result<T> = core::result::Result<T, Error>;
 
-/// Surf based backend
+/// Reqwest based backend
 #[cfg(any(feature = "http", feature = "http-web"))]
 pub mod http;
 

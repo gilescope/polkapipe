@@ -5,14 +5,13 @@ use crate::{
 use core::{convert::TryInto, fmt};
 use jsonrpc::{
 	error::{standard_error, StandardError},
-	serde_json::value::to_raw_value,
 };
-pub use surf::Url;
 
 use crate::rpc::{self, Rpc, RpcResult};
+use serde_json::value::RawValue;
 
 #[derive(Debug)]
-pub struct Backend(Url);
+pub struct Backend(String);
 
 impl Streamable for Backend {
 	async fn stream(
@@ -36,8 +35,8 @@ impl Streamable for Backend {
 impl Backend {
 	pub fn new<U>(url: U) -> Self
 	where
-		U: TryInto<Url>,
-		<U as TryInto<Url>>::Error: fmt::Debug,
+		U: TryInto<String>,
+		<U as TryInto<String>>::Error: fmt::Debug,
 	{
 		Backend(url.try_into().expect("Url"))
 	}
@@ -57,40 +56,36 @@ impl Rpc for Backend {
 		);
 		#[cfg(feature = "logging")]
 		log::debug!("outgoing request was: `{}`", body);
-		let req = surf::post(&self.0).content_type("application/json").body(body);
-		let client = surf::client().with(surf::middleware::Redirect::new(2));
-		let mut res = client
-			.send(req)
-			.await
-			.map_err(|err| rpc::Error::Transport(err.into_inner().into()))?;
+		let res = reqwest::Client::new().post(&self.0)
+		 .header(reqwest::header::CONTENT_TYPE, "application/json")
+		.body(body).send().await.map_err(|err| rpc::Error::Transport(err.into()))?;
 
 		let status = res.status();
 		#[cfg(feature = "logging")]
 		log::debug!("outgoing request status: `{}`", status);
 
 		let res = if status.is_success() {
-			res.body_json::<rpc::Response>().await.map_err(|err| {
-				standard_error(StandardError::ParseError, to_raw_value(&err.to_string()).ok())
-			})?
+			res.text().await
 		} else {
 			#[cfg(feature = "logging")]
 			log::debug!("RPC HTTP status: {}", res.status());
-			let err = res.body_string().await.unwrap_or_else(|_| status.canonical_reason().into());
-			let err = to_raw_value(&err).expect("error string");
+			let err = res.text().await;
+			let err = err.expect("error string");
 			#[cfg(feature = "logging")]
 			log::debug!("RPC Response: {:?}...", &res);
 
 			return Err(if status.is_client_error() {
-				standard_error(StandardError::InvalidRequest, Some(err)).into()
+				standard_error(StandardError::InvalidRequest, None).into()
 			} else {
-				standard_error(StandardError::InternalError, Some(err)).into()
+				standard_error(StandardError::InternalError, None).into()
 			})
 		};
 
 		// assume the response is a hex encoded string starting with "0x"
 		// let response = hex::decode(&res[2..])
 		// 	.map_err(|_err| standard_error(StandardError::InternalError, None))?;
-		res.result.ok_or(jsonrpc::error::Error::EmptyBatch)
+		res.map(|v| RawValue::from_string(v).unwrap())
+		.map_err(|_| jsonrpc::error::Error::EmptyBatch)
 	}
 }
 
