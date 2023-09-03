@@ -66,12 +66,12 @@ impl Rpc for Backend {
 			log::trace!("RPC got lock now sending {} ...", &msg[..50]);
 			while lock.ready_state() < web_sys::WebSocket::OPEN {
 				let delay = 300;
-				#[cfg(target_arch="wasm32")]
+				#[cfg(target_arch = "wasm32")]
 				{
 					use gloo_timers::future::sleep;
 					sleep(Duration::from_millis(delay as u64)).await;
 				}
-				#[cfg(not(target_arch="wasm32"))]
+				#[cfg(not(target_arch = "wasm32"))]
 				async_std::task::sleep(Duration::from_millis(delay as u64)).await;
 			}
 

@@ -61,22 +61,32 @@ env_logger = "0.9"
 wasm-bindgen-test = "0.3"
 
 [features]
-default = ["std", "wss"]
-http = ["surf/h1-client-rustls",  "async-std", ]
-http-web = ["surf/wasm-client",  "async-std", ]
+default = [ "std", "wss" ]
+http = [ "async-std", "surf/h1-client-rustls" ]
+http-web = [ "async-std", "surf/wasm-client" ]
 std = []
 ws = [
-    "async-std",
-    "async-tungstenite",
-    "async-mutex",
-    "futures-util",
-    "futures-channel",
+	"async-mutex",
+	"async-std",
+	"async-tungstenite",
+	"futures-channel",
+	"futures-util",
 ]
-logging = ["log", "console_log"]
-wss = ["ws", "async-tls", "async-tungstenite/async-tls"]
-ws-web = ["async-mutex","async-std/alloc","async-std/std"]
-smoldot-std = ["smoldot-light", "futures", "lazy_static", "std", "futures-util",
-    "futures-channel", "async-mutex", "async-std", "async-std/alloc","async-std/std"]
+logging = [ "console_log", "log" ]
+wss = [ "async-tls", "async-tungstenite/async-tls", "ws" ]
+ws-web = [ "async-mutex", "async-std/alloc", "async-std/std" ]
+smoldot-std = [
+	"async-mutex",
+	"async-std",
+	"async-std/alloc",
+	"async-std/std",
+	"futures",
+	"futures-channel",
+	"futures-util",
+	"lazy_static",
+	"smoldot-light",
+	"std",
+]
 
 [package.metadata.docs.rs]
 features = ["http"]
