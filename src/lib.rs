@@ -1,6 +1,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
-#![allow(incomplete_features)]
-#![feature(async_fn_in_trait)]
+// #![allow(incomplete_features)]
+// #![feature(async_fn_in_trait)]
 // #![feature(return_position_impl_trait_in_trait)]
 /*!
 Polkapipe is a fork of Sube that has few deps with multi-backend support
@@ -13,7 +13,7 @@ Creating a client is as simple as instantiating a backend and converting it to a
 
 ```
 # use polkapipe::{Error, PolkaPipe};
-# #[async_std::main] async fn main() -> Result<(), Error> {
+# #[tokio::main] async fn main() -> Result<(), Error> {
 # const CHAIN_URL: &str = "ws://localhost:24680";
 // Create an instance of Sube from any of the available backends
 //let client = ws::PolkaPipe::<_>::new(ws::Backend::new(CHAIN_URL).await?);
@@ -88,8 +88,8 @@ impl fmt::Display for Error {
 }
 
 #[cfg(all(feature = "ws", not(target_arch = "wasm32")))]
-impl From<async_tungstenite::tungstenite::Error> for Error {
-	fn from(_err: async_tungstenite::tungstenite::Error) -> Self {
+impl From<tokio_tungstenite::tungstenite::Error> for Error {
+	fn from(_err: tokio_tungstenite::tungstenite::Error) -> Self {
 		Error::ChainUnavailable
 	}
 }

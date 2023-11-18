@@ -1,8 +1,9 @@
 use crate::prelude::*;
-// use async_trait::async_trait;
-pub use jsonrpc::{error, Error, Request, Response};
+
+pub use jsonrpc::{error, Error};//, Request, Response};
 pub type RpcResult = Result<Box<serde_json::value::RawValue>, error::Error>;
-use async_std::stream::Stream;
+// use tokio_stream::StreamExt;
+use tokio_stream::Stream;
 use core::str::FromStr;
 
 /// Scale state changes
@@ -16,15 +17,15 @@ pub struct StateChanges {
 // #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 // #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 pub trait Rpc {
-	async fn rpc(&self, method: &str, params: &str) -> RpcResult;
+	fn rpc(&self, method: &str, params: &str) -> impl core::future::Future<Output = RpcResult> + Send;
 }
 
 pub trait Streamable {
-	async fn stream(
+	fn stream(
 		&self,
 		method: &str,
 		params: &str,
-	) -> async_std::channel::Receiver<StateChanges>;
+	) -> impl core::future::Future<Output = futures_channel::mpsc::Receiver<StateChanges>> + Send;
 }
 
 fn convert_params_raw(params: &[&str]) -> String {
@@ -42,9 +43,10 @@ fn convert_params_raw(params: &[&str]) -> String {
 
 fn extract_bytes(val: &serde_json::value::RawValue) -> crate::Result<Vec<u8>> {
 	let val2 = serde_json::Value::from_str(val.get());
+	// println!("{:?}", val2);
 	if let Some(result_val) = val2.unwrap().get("result") {
 		if let serde_json::Value::String(meta) = result_val {
-			Ok(hex::decode(&meta[(1 + "0x".len())..meta.len() - 1])
+			Ok(hex::decode(&meta.strip_prefix("0x").unwrap_or(&meta))
 				.unwrap_or_else(|_| panic!("shoudl be hex: {}", meta)))
 		} else {
 			#[cfg(feature = "logging")]
@@ -53,55 +55,55 @@ fn extract_bytes(val: &serde_json::value::RawValue) -> crate::Result<Vec<u8>> {
 		}
 	} else {
 		let meta = val.get();
-		Ok(hex::decode(&meta[(1 + "0x".len())..meta.len() - 1])
+		Ok(hex::decode(&meta.strip_prefix("0x").unwrap_or(&meta))
 			.unwrap_or_else(|_| panic!("should be hex: {}", meta)))
 	}
 }
 
-pub fn parse_changes(value: &serde_json::Value) -> Option<(&str, StateChanges)> {
-	if let serde_json::Value::Object(map) = value {
-		if let Some(serde_json::Value::Object(params_map)) = map.get("params") {
-			if let Some(serde_json::Value::String(subscription_id)) = params_map.get("subscription")
-			{
-				if let Some(serde_json::Value::Object(result)) = params_map.get("result") {
-					if let Some(serde_json::Value::String(block)) = result.get("block") {
-						if let Some(serde_json::Value::Array(changes)) = result.get("changes") {
-							debug_assert!(block.starts_with("0x"));
-							let block = hex::decode(&block[2..]).unwrap();
-							let mut state_changes = StateChanges { block, changes: vec![] };
+// pub fn parse_changes(value: &serde_json::Value) -> Option<(&str, StateChanges)> {
+// 	if let serde_json::Value::Object(map) = value {
+// 		if let Some(serde_json::Value::Object(params_map)) = map.get("params") {
+// 			if let Some(serde_json::Value::String(subscription_id)) = params_map.get("subscription")
+// 			{
+// 				if let Some(serde_json::Value::Object(result)) = params_map.get("result") {
+// 					if let Some(serde_json::Value::String(block)) = result.get("block") {
+// 						if let Some(serde_json::Value::Array(changes)) = result.get("changes") {
+// 							debug_assert!(block.starts_with("0x"));
+// 							let block = hex::decode(&block[2..]).unwrap();
+// 							let mut state_changes = StateChanges { block, changes: vec![] };
 
-							for change in changes {
-								if let serde_json::Value::Array(key_val) = change {
-									debug_assert!(key_val.len() == 2);
-									if let serde_json::Value::String(key) = &change[0] {
-										let key = hex::decode(&key[2..]).unwrap();
-										if let serde_json::Value::String(value) = &change[1] {
-											let value = hex::decode(&value[2..]).unwrap();
-											state_changes.changes.push((key, value));
-										}
-									}
-								}
-							}
-							return Some((subscription_id.as_str(), state_changes))
-						}
-					}
-				}
-			}
-		}
-	}
-	None
-}
+// 							for change in changes {
+// 								if let serde_json::Value::Array(key_val) = change {
+// 									debug_assert!(key_val.len() == 2);
+// 									if let serde_json::Value::String(key) = &change[0] {
+// 										let key = hex::decode(&key[2..]).unwrap();
+// 										if let serde_json::Value::String(value) = &change[1] {
+// 											let value = hex::decode(&value[2..]).unwrap();
+// 											state_changes.changes.push((key, value));
+// 										}
+// 									}
+// 								}
+// 							}
+// 							return Some((subscription_id.as_str(), state_changes))
+// 						}
+// 					}
+// 				}
+// 			}
+// 		}
+// 	}
+// 	None
+// }
 
 // subscription id used to unsubscribe
-pub(crate) fn extract_subscription(val: &serde_json::value::RawValue) -> crate::Result<&str> {
-	let val2 = serde_json::Value::from_str(val.get());
-	if let Some(_result_val) = val2.unwrap().get("result") {
-		panic!("unexpected");
-	} else {
-		let meta = val.get();
-		Ok(&meta[1..meta.len() - 1])
-	}
-}
+// pub(crate) fn extract_subscription(val: &serde_json::value::RawValue) -> crate::Result<&str> {
+// 	let val2 = serde_json::Value::from_str(val.get());
+// 	if let Some(_result_val) = val2.unwrap().get("result") {
+// 		panic!("unexpected");
+// 	} else {
+// 		let meta = val.get();
+// 		Ok(&meta[1..meta.len() - 1])
+// 	}
+// }
 
 pub struct PolkaPipe<R: Rpc> {
 	pub rpc: R,
@@ -259,71 +261,78 @@ impl<R: Rpc + Streamable> PolkaPipe<R> {
 		}
 	}
 
-	pub async fn state_get_keys(
-		&self,
-		key: &str,
-		as_of: Option<&[u8]>,
-	) -> crate::Result<serde_json::value::Value> {
-		if let Some(as_of) = as_of {
-			let buf = hex::encode(as_of);
-			let buf = format!("\"0x{}\"", buf);
-			let params = vec![key, buf.as_str()];
+	// pub async fn state_get_keys(
+	// 	&self,
+	// 	key: &str,
+	// 	as_of: Option<&[u8]>,
+	// ) -> crate::Result<serde_json::value::Value> {
+	// 	if let Some(as_of) = as_of {
+	// 		let buf = hex::encode(as_of);
+	// 		let buf = format!("\"0x{}\"", buf);
+	// 		let params = vec![key, buf.as_str()];
 
-			self.rpc
-				.rpc("state_getKeys", &convert_params_raw(&params))
-				.await
-				.map(|raw_val| serde_json::Value::from_str(raw_val.get()).unwrap())
-				.map_err(|e| {
-					#[cfg(feature = "logging")]
-					log::debug!("RPC failure: {}", &e);
-					crate::Error::Node(e.to_string())
-				})
-		} else {
-			self.rpc
-				.rpc("state_getKeys", &format!("[\"{}\"]", key))
-				.await
-				.map(|raw_val| serde_json::Value::from_str(raw_val.get()).unwrap())
-				.map_err(|e| {
-					#[cfg(feature = "logging")]
-					log::warn!("RPC failure: {:?}", &e);
-					crate::Error::Node(format!("{}", e))
-				})
-		}
-	}
+	// 		self.rpc
+	// 			.rpc("state_getKeys", &convert_params_raw(&params))
+	// 			.await
+	// 			.map(|raw_val| serde_json::Value::from_str(raw_val.get()).unwrap())
+	// 			.map_err(|e| {
+	// 				#[cfg(feature = "logging")]
+	// 				log::debug!("RPC failure: {}", &e);
+	// 				crate::Error::Node(e.to_string())
+	// 			})
+	// 	} else {
+	// 		self.rpc
+	// 			.rpc("state_getKeys", &format!("[\"{}\"]", key))
+	// 			.await
+	// 			.map(|raw_val| serde_json::Value::from_str(raw_val.get()).unwrap())
+	// 			.map_err(|e| {
+	// 				#[cfg(feature = "logging")]
+	// 				log::warn!("RPC failure: {:?}", &e);
+	// 				crate::Error::Node(format!("{}", e))
+	// 			})
+	// 	}
+	// }
 
-	pub async fn state_get_keys_paged(
-		&self,
-		key: &str,
-		count: u32,
-		as_of: Option<&[u8]>,
-	) -> crate::Result<serde_json::value::Value> {
-		if let Some(as_of) = as_of {
-			let buf = hex::encode(as_of);
-			let buf = format!("\"0x{}\"", buf);
-			let count = count.to_string();
-			let params = vec![key, &count, buf.as_str()];
+	// pub async fn state_get_keys_paged(
+	// 	&self,
+	// 	key: &str,
+	// 	count: u32,
+	// 	as_of: Option<&[u8]>,
+	// ) -> crate::Result<serde_json::value::Value> {
+	// 	if let Some(as_of) = as_of {
+	// 		let buf = hex::encode(as_of);
+	// 		let buf = format!("\"0x{}\"", buf);
+	// 		let count = count.to_string();
+	// 		let params = vec![key, &count, buf.as_str()];
 
-			self.rpc
-				.rpc("state_getKeysPaged", &convert_params_raw(&params))
-				.await
-				.map(|raw_val| serde_json::Value::from_str(raw_val.get()).unwrap())
-				.map_err(|e| {
-					#[cfg(feature = "logging")]
-					log::debug!("RPC failure: {}", &e);
-					crate::Error::Node(e.to_string())
-				})
-		} else {
-			self.rpc
-				.rpc("state_getKeysPaged", &format!("[\"{}\", {}]", key, count))
-				.await
-				.map(|raw_val| serde_json::Value::from_str(raw_val.get()).unwrap())
-				.map_err(|e| {
-					#[cfg(feature = "logging")]
-					log::warn!("RPC failure: {:?}", &e);
-					crate::Error::Node(format!("{}", e))
-				})
-		}
-	}
+	// 		self.rpc
+	// 			.rpc("state_getKeysPaged", &convert_params_raw(&params))
+	// 			.await
+	// 			.map(|raw_val| {
+	// 				println!("FRED {:?}", &raw_val);
+	// 				serde_json::Value::from_str(raw_val.get()).unwrap()
+	// 			})
+	// 			.map_err(|e| {
+	// 									println!("FRED ERROR {:?}", &e);
+
+	// 				#[cfg(feature = "logging")]
+	// 				log::debug!("RPC failure: {}", &e);
+	// 				crate::Error::Node(e.to_string())
+	// 			})
+	// 	} else {
+	// 			println!("OTHER");
+	// 		self.rpc
+	// 			.rpc("state_getKeysPaged", &format!("[\"{}\", {}]", key, count))
+	// 			.await
+	// 			.map(|raw_val| serde_json::Value::from_str(raw_val.get()).unwrap())
+	// 			.map_err(|e| {
+	// 				println!("ERROR GOT {:?}", &e);
+	// 				#[cfg(feature = "logging")]
+	// 				log::warn!("RPC failure: {:?}", &e);
+	// 				crate::Error::Node(format!("{}", e))
+	// 			})
+	// 	}
+	// }
 
 	pub async fn query_metadata(&self, as_of: Option<&[u8]>) -> crate::Result<Vec<u8>> {
 		self.query_state_call("Metadata_metadata", b"", as_of).await.map(|mut v| {
