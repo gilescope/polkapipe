@@ -43,7 +43,7 @@ web-sys = { version = "0.3", features = [
 ], default-features = false }
 js-sys = { version = "0.3", features = [], default-features = false }
 console_log = { version = "0.2", optional = true }
-async-oneshot = "0.5"
+async-oneshot = { version = "0.1", optional = true }
 pollster = "0.2.5" # needed for block_on in a browser callback
 gloo-timers = {version = "0.2.4", features = ["futures"]}
 
@@ -78,7 +78,7 @@ ws = [
 ]
 logging = [ "console_log", "log" ]
 wss = [ "async-tls", "tokio-tungstenite/rustls-tls-native-roots", "ws" ]
-ws-web = [ "async-mutex", "async-std/alloc", "async-std/std", "async-std/unstable" ]
+ws-web = [ "async-mutex", "async-std/alloc", "async-std/std", "async-std/unstable", "async-oneshot" ]
 smoldot-std = [
 	"async-mutex",
 	"async-std",
