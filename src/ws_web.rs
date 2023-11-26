@@ -66,12 +66,12 @@ impl Rpc for Backend {
 			log::trace!("RPC got lock now sending {} ...", &msg[..50]);
 			while lock.ready_state() < web_sys::WebSocket::OPEN {
 				let delay = 300;
-				#[cfg(target_arch="wasm32")]
+				#[cfg(target_arch = "wasm32")]
 				{
 					use gloo_timers::future::sleep;
 					sleep(Duration::from_millis(delay as u64)).await;
 				}
-				#[cfg(not(target_arch="wasm32"))]
+				#[cfg(not(target_arch = "wasm32"))]
 				async_std::task::sleep(Duration::from_millis(delay as u64)).await;
 			}
 
@@ -182,7 +182,7 @@ mod tests {
 
 	#[wasm_bindgen_test]
 	fn can_get_metadata() {
-		async_std::task::block_on(can_get_metadata_test());
+		tokio::runtime::Runtime::block_on(can_get_metadata_test());
 	}
 
 	async fn can_get_metadata_test() {
@@ -196,7 +196,7 @@ mod tests {
 
 	#[wasm_bindgen_test]
 	fn can_get_metadata_as_of() {
-		async_std::task::block_on(can_get_metadata_as_of_test());
+		tokio::runtime::Runtime::block_on(can_get_metadata_as_of_test());
 	}
 
 	async fn can_get_metadata_as_of_test() {
@@ -210,7 +210,7 @@ mod tests {
 
 	#[wasm_bindgen_test]
 	fn can_get_block_hash() {
-		async_std::task::block_on(can_get_block_hash_test());
+		tokio::runtime::Runtime::block_on(can_get_block_hash_test());
 	}
 
 	async fn can_get_block_hash_test() {
@@ -231,7 +231,7 @@ mod tests {
 
 	#[wasm_bindgen_test]
 	fn can_get_full_block() {
-		async_std::task::block_on(can_get_full_block_test());
+		tokio::runtime::Runtime::block_on(can_get_full_block_test());
 	}
 
 	async fn can_get_full_block_test() {
@@ -242,7 +242,7 @@ mod tests {
 
 	#[wasm_bindgen_test]
 	fn can_get_latest_full_block() {
-		async_std::task::block_on(can_get_latest_full_block_test());
+		tokio::runtime::Runtime::block_on(can_get_latest_full_block_test());
 	}
 
 	async fn can_get_latest_full_block_test() {
@@ -252,7 +252,7 @@ mod tests {
 
 	#[wasm_bindgen_test]
 	fn can_get_storage_as_of() {
-		async_std::task::block_on(can_get_storage_as_of_test());
+		tokio::runtime::Runtime::block_on(can_get_storage_as_of_test());
 	}
 
 	async fn can_get_storage_as_of_test() {
@@ -274,7 +274,7 @@ mod tests {
 
 	#[wasm_bindgen_test]
 	fn can_get_storage_now() {
-		async_std::task::block_on(can_get_storage_now_test());
+		tokio::runtime::Runtime::block_on(can_get_storage_now_test());
 	}
 
 	async fn can_get_storage_now_test() {

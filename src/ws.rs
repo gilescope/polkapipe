@@ -4,8 +4,7 @@ use crate::{
 };
 use alloc::{collections::BTreeMap, sync::Arc};
 use async_mutex::Mutex;
-use async_std::task;
-use async_tungstenite::tungstenite::{Error as WsError, Message};
+use tokio_tungstenite::tungstenite::{Error as WsError, Message};
 use core::time::Duration;
 use futures_channel::oneshot;
 use futures_util::{
@@ -23,7 +22,7 @@ type Id = u16;
 pub struct Backend<Tx> {
 	tx: Mutex<Tx>,
 	messages: Arc<Mutex<BTreeMap<Id, oneshot::Sender<rpc::Response>>>>,
-	streams: Arc<Mutex<BTreeMap<String, async_std::channel::Sender<StateChanges>>>>,
+	streams: Arc<Mutex<BTreeMap<String, tokio::channel::Sender<StateChanges>>>>,
 }
 
 // impl<Tx> BackendParent for Backend<Tx> where Tx: Sink<Message, Error = Error> + Unpin + Send {}
@@ -36,7 +35,7 @@ where
 		&self,
 		method: &str,
 		params: &str,
-	) -> async_std::channel::Receiver<StateChanges> {
+	) -> tokio::channel::Receiver<StateChanges> {
 		let result = self.rpc(method, params).await;
 		let (sender, recv) = async_std::channel::unbounded();
 		if let Ok(result_subscription) = result {
@@ -89,7 +88,7 @@ impl<Tx> Backend<Tx> {
 
 #[cfg(not(feature = "wss"))]
 pub type WS2 = futures_util::sink::SinkErrInto<
-	SplitSink<async_tungstenite::WebSocketStream<async_std::net::TcpStream>, Message>,
+	SplitSink<tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>, Message>,
 	Message,
 	Error,
 >;
@@ -97,10 +96,10 @@ pub type WS2 = futures_util::sink::SinkErrInto<
 #[cfg(feature = "wss")]
 pub type WS2 = futures_util::sink::SinkErrInto<
 	SplitSink<
-		async_tungstenite::WebSocketStream<
-			async_tungstenite::stream::Stream<
-				async_std::net::TcpStream,
-				async_tls::client::TlsStream<async_std::net::TcpStream>,
+		tokio_tungstenite::WebSocketStream<
+			tokio_tungstenite::stream::Stream<
+				tokio::net::TcpStream,
+				async_tls::client::TlsStream<tokio::net::TcpStream>,
 			>,
 		>,
 		Message,
@@ -117,14 +116,14 @@ impl Backend<WS2> {
 		let mut socket;
 		let mut tries = 0;
 		let (stream, _) = loop {
-			socket = async_tungstenite::async_std::connect_async(url).await;
+			socket = tokio_tungstenite::async_std::connect_async(url).await;
 			if let Ok(socket) = socket {
 				break socket
 			} else if tries > 5 {
 				socket?;
 			}
 			tries += 1;
-			async_std::task::sleep(Duration::from_secs(2)).await;
+			tokio::time::sleep(Duration::from_secs(2)).await;
 		};
 
 		let (tx, rx) = stream.split();
@@ -147,7 +146,7 @@ impl Backend<WS2> {
 		let messages = self.messages.clone();
 		let streams = self.streams.clone();
 
-		task::spawn(async move {
+		tokio::spawn(async move {
 			while let Some(msg) = rx.next().await {
 				match msg {
 					Ok(msg) => {
@@ -194,6 +193,7 @@ impl Backend<WS2> {
 						log::warn!("WS Error: {}", _err);
 					},
 				}
+				tokio::task::yield_now();
 			}
 			#[cfg(feature = "logging")]
 			log::warn!("WS connection closed");
@@ -214,7 +214,7 @@ mod tests {
 #[cfg(test)]
 mod tests {
 	use crate::ws::{Backend, WS2};
-	use async_std::stream::StreamExt;
+	use tokio::stream::StreamExt;
 
 	fn init() {
 		let _ = env_logger::builder().is_test(true).try_init();
@@ -222,7 +222,7 @@ mod tests {
 
 	fn polkadot_backend() -> crate::PolkaPipe<Backend<WS2>> {
 		let backend =
-			async_std::task::block_on(crate::ws::Backend::new("wss://rpc.polkadot.io")).unwrap();
+			tokio::runtime::Runtime::block_on(crate::ws::Backend::new("wss://rpc.polkadot.io")).unwrap();
 		crate::PolkaPipe { rpc: backend }
 	}
 
@@ -230,7 +230,7 @@ mod tests {
 	fn can_get_metadata() {
 		init();
 		let latest_metadata =
-			async_std::task::block_on(polkadot_backend().query_metadata(None)).unwrap();
+			tokio::runtime::Runtime::block_on(polkadot_backend().query_metadata(None)).unwrap();
 		assert!(latest_metadata.len() > 0);
 	}
 
@@ -241,7 +241,7 @@ mod tests {
 			hex::decode("e33568bff8e6f30fee6f217a93523a6b29c31c8fe94c076d818b97b97cfd3a16")
 				.unwrap();
 		let as_of_metadata =
-			async_std::task::block_on(polkadot_backend().query_metadata(Some(&block_hash)))
+			tokio::runtime::Runtime::block_on(polkadot_backend().query_metadata(Some(&block_hash)))
 				.unwrap();
 		assert!(as_of_metadata.len() > 0);
 	}
@@ -250,13 +250,13 @@ mod tests {
 	fn can_get_block_hash() {
 		init();
 		let polkadot = polkadot_backend();
-		let hash = async_std::task::block_on(polkadot.query_block_hash(&vec![1])).unwrap();
+		let hash = tokio::runtime::Runtime::block_on(polkadot.query_block_hash(&vec![1])).unwrap();
 		assert_eq!(
 			"c0096358534ec8d21d01d34b836eed476a1c343f8724fa2153dc0725ad797a90",
 			hex::encode(hash)
 		);
 
-		let hash = async_std::task::block_on(polkadot.query_block_hash(&vec![10504599])).unwrap();
+		let hash = tokio::runtime::Runtime::block_on(polkadot.query_block_hash(&vec![10504599])).unwrap();
 		assert_eq!(
 			"e33568bff8e6f30fee6f217a93523a6b29c31c8fe94c076d818b97b97cfd3a16",
 			hex::encode(hash)
@@ -268,14 +268,14 @@ mod tests {
 		init();
 		let hash = "c191b96685aad1250b47d6bc2e95392e3a200eaa6dca8bccfaa51cfd6d558a6a";
 		let block_bytes =
-			async_std::task::block_on(polkadot_backend().query_block(Some(hash))).unwrap();
+			tokio::runtime::Runtime::block_on(polkadot_backend().query_block(Some(hash))).unwrap();
 		assert!(matches!(block_bytes, serde_json::value::Value::Object(_)));
 	}
 
 	#[test]
 	fn can_get_latest_block() {
 		init();
-		let block_bytes = async_std::task::block_on(polkadot_backend().query_block(None)).unwrap();
+		let block_bytes = tokio::runtime::Runtime::block_on(polkadot_backend().query_block(None)).unwrap();
 		// println!("{:?}", &block_bytes);
 		assert!(matches!(block_bytes, serde_json::value::Value::Object(_)));
 	}
@@ -290,7 +290,7 @@ mod tests {
 		let events_key = "26aa394eea5630e07c48ae0c9558cef780d41e5e16056765bc8461851072c9d7";
 		let key = hex::decode(events_key).unwrap();
 
-		let as_of_events = async_std::task::block_on(
+		let as_of_events = tokio::runtime::Runtime::block_on(
 			polkadot_backend().query_storage(&key[..], Some(&block_hash)),
 		)
 		.unwrap();
@@ -305,7 +305,7 @@ mod tests {
 		let parachain = polkadot_backend();
 
 		let as_of_events =
-			async_std::task::block_on(parachain.query_storage(&key[..], None)).unwrap();
+			tokio::runtime::Runtime::block_on(parachain.query_storage(&key[..], None)).unwrap();
 		assert!(as_of_events.len() > 10);
 		// This is statemint's scale encoded parachain id (1000)
 	}
@@ -313,7 +313,7 @@ mod tests {
 	#[test]
 	fn can_get_state_changes() {
 		init();
-		async_std::task::block_on(testy());
+		tokio::runtime::Runtime::block_on(testy());
 	}
 
 	async fn testy() {
@@ -322,7 +322,7 @@ mod tests {
 		let parachain = polkadot_backend();
 
 		let mut payload_stream =
-			async_std::task::block_on(parachain.subscribe_storage(&[&key[..]], None));
+			tokio::runtime::Runtime::block_on(parachain.subscribe_storage(&[&key[..]], None));
 
 		for _ in 0..2 {
 			let n = payload_stream.next().await.unwrap();
@@ -336,7 +336,7 @@ mod tests {
 	// #[test]
 	// fn can_get_state_changes_asof() {
 	// 	init();
-	// 	async_std::task::block_on(testy_asof());
+	// 	tokio::runtime::Runtime::block_on(testy_asof());
 	// }
 
 	// async fn testy_asof() {
@@ -348,7 +348,7 @@ mod tests {
 	// 	let parachain = polkadot_backend();
 
 	// 	let mut payload_stream =
-	// 		async_std::task::block_on(parachain.subscribe_storage(&[&key[..]], Some(&block_hash)));
+	// 		tokio::runtime::Runtime::block_on(parachain.subscribe_storage(&[&key[..]], Some(&block_hash)));
 
 	// 	let n = payload_stream.next().await;
 	// 	println!("{:?}", n);

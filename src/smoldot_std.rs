@@ -244,14 +244,14 @@ mod tests {
 	#[test]
 	fn can_get_metadata() {
 		init();
-		let backend = async_std::task::block_on(polkadot_backend());
-		let latest_metadata = async_std::task::block_on(backend.query_metadata(None)).unwrap();
+		let backend = tokio::runtime::Runtime::block_on(polkadot_backend());
+		let latest_metadata = tokio::runtime::Runtime::block_on(backend.query_metadata(None)).unwrap();
 		assert!(latest_metadata.len() > 0);
 
 		// Check statemint's metadata is different to relay chain.
-		let statemint = async_std::task::block_on(statemint_backend());
+		let statemint = tokio::runtime::Runtime::block_on(statemint_backend());
 		let latest_metadata_statemint =
-			async_std::task::block_on(statemint.query_metadata(None)).unwrap();
+			tokio::runtime::Runtime::block_on(statemint.query_metadata(None)).unwrap();
 		assert!(latest_metadata.len() > 0);
 		assert_ne!(latest_metadata, latest_metadata_statemint);
 	}
@@ -262,7 +262,7 @@ mod tests {
 	// 		hex::decode("e33568bff8e6f30fee6f217a93523a6b29c31c8fe94c076d818b97b97cfd3a16")
 	// 			.unwrap();
 	// 	let as_of_metadata =
-	// 		async_std::task::block_on(polkadot_backend().query_metadata(Some(&block_hash)))
+	// 		tokio::runtime::Runtime::block_on(polkadot_backend().query_metadata(Some(&block_hash)))
 	// 			.unwrap();
 	// 	assert!(as_of_metadata.len() > 0);
 	// }
@@ -272,14 +272,14 @@ mod tests {
 	// 	// env_logger::init();
 	// 	let polkadot = polkadot_backend();
 	// 	std::thread::sleep(std::time::Duration::from_secs(10));
-	// 	let hash = async_std::task::block_on(polkadot.query_block_hash(&vec![1])).unwrap();
+	// 	let hash = tokio::runtime::Runtime::block_on(polkadot.query_block_hash(&vec![1])).unwrap();
 	// 	println!("{:?}", String::from_utf8(hash.clone()));
 	// 	assert_eq!(
 	// 		"c0096358534ec8d21d01d34b836eed476a1c343f8724fa2153dc0725ad797a90",
 	// 		hex::encode(hash)
 	// 	);
 
-	// 	// let hash = async_std::task::block_on(polkadot.query_block_hash(&vec![10504599])).unwrap();
+	// 	// let hash = tokio::runtime::Runtime::block_on(polkadot.query_block_hash(&vec![10504599])).unwrap();
 	// 	// assert_eq!(
 	// 	// 	"e33568bff8e6f30fee6f217a93523a6b29c31c8fe94c076d818b97b97cfd3a16",
 	// 	// 	hex::encode(hash)
@@ -290,15 +290,15 @@ mod tests {
 	// fn can_get_full_block() {
 	// 	let hash = "c191b96685aad1250b47d6bc2e95392e3a200eaa6dca8bccfaa51cfd6d558a6a";
 	// 	let block_bytes =
-	// 		async_std::task::block_on(polkadot_backend().query_block(Some(hash))).unwrap();
+	// 		tokio::runtime::Runtime::block_on(polkadot_backend().query_block(Some(hash))).unwrap();
 	// 	assert!(matches!(block_bytes, serde_json::value::Value::Object(_)));
 	// }
 
 	#[test]
 	fn can_get_latest_block() {
 		init();
-		let backend = async_std::task::block_on(polkadot_backend());
-		let block_bytes = async_std::task::block_on(backend.query_block(None)).unwrap();
+		let backend = tokio::runtime::Runtime::block_on(polkadot_backend());
+		let block_bytes = tokio::runtime::Runtime::block_on(backend.query_block(None)).unwrap();
 		// println!("{:?}", &block_bytes);
 		assert!(matches!(block_bytes, serde_json::value::Value::Object(_)));
 	}
@@ -306,8 +306,8 @@ mod tests {
 	#[test]
 	fn can_get_latest_block_on_parachain() {
 		init();
-		let statemint = async_std::task::block_on(statemint_backend());
-		let block_bytes = async_std::task::block_on(statemint.query_block(None)).unwrap();
+		let statemint = tokio::runtime::Runtime::block_on(statemint_backend());
+		let block_bytes = tokio::runtime::Runtime::block_on(statemint.query_block(None)).unwrap();
 		// println!("{:?}", &block_bytes);
 		assert!(matches!(block_bytes, serde_json::value::Value::Object(_)));
 	}
@@ -322,7 +322,7 @@ mod tests {
 	// 	let events_key = "26aa394eea5630e07c48ae0c9558cef780d41e5e16056765bc8461851072c9d7";
 	// 	let key = hex::decode(events_key).unwrap();
 
-	// 	let as_of_events = async_std::task::block_on(
+	// 	let as_of_events = tokio::runtime::Runtime::block_on(
 	// 		polkadot_backend().query_storage(&key[..], Some(&block_hash)),
 	// 	)
 	// 	.unwrap();
@@ -336,9 +336,9 @@ mod tests {
 		let events_key = "26aa394eea5630e07c48ae0c9558cef780d41e5e16056765bc8461851072c9d7";
 		let key = hex::decode(events_key).unwrap();
 
-		let backend = async_std::task::block_on(polkadot_backend());
+		let backend = tokio::runtime::Runtime::block_on(polkadot_backend());
 		let as_of_events =
-			async_std::task::block_on(backend.query_storage(&key[..], None)).unwrap();
+			tokio::runtime::Runtime::block_on(backend.query_storage(&key[..], None)).unwrap();
 		assert!(as_of_events.len() > 0);
 	}
 }

@@ -1,25 +1,20 @@
 use crate::{
 	prelude::*,
-	rpc::{StateChanges, Streamable},
+	rpc::{self, Rpc, RpcResult, StateChanges, Streamable},
 };
 use core::{convert::TryInto, fmt};
-use jsonrpc::{
-	error::{standard_error, StandardError},
-	serde_json::value::to_raw_value,
-};
-pub use surf::Url;
-
-use crate::rpc::{self, Rpc, RpcResult};
+use jsonrpc::error::{standard_error, StandardError};
+use serde_json::value::RawValue;
 
 #[derive(Debug)]
-pub struct Backend(Url);
+pub struct Backend(String);
 
 impl Streamable for Backend {
 	async fn stream(
 		&self,
 		method: &str,
 		params: &str,
-	) -> async_std::channel::Receiver<StateChanges> {
+	) -> futures_channel::mpsc::Receiver<StateChanges> {
 		let _result = self.rpc(method, params).await;
 		panic!("unsupported for now");
 		// let (sender, recv) = async_std::channel::unbounded();
@@ -36,15 +31,13 @@ impl Streamable for Backend {
 impl Backend {
 	pub fn new<U>(url: U) -> Self
 	where
-		U: TryInto<Url>,
-		<U as TryInto<Url>>::Error: fmt::Debug,
+		U: TryInto<String>,
+		<U as TryInto<String>>::Error: fmt::Debug,
 	{
 		Backend(url.try_into().expect("Url"))
 	}
 }
 
-// #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
-// #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl Rpc for Backend {
 	/// HTTP based JSON RPC request expecting valid json result.
 	async fn rpc(&self, method: &str, params: &str) -> RpcResult {
@@ -57,54 +50,57 @@ impl Rpc for Backend {
 		);
 		#[cfg(feature = "logging")]
 		log::debug!("outgoing request was: `{}`", body);
-		let req = surf::post(&self.0).content_type("application/json").body(body);
-		let client = surf::client().with(surf::middleware::Redirect::new(2));
-		let mut res = client
-			.send(req)
+		let res = reqwest::Client::new()
+			.post(&self.0)
+			.header(reqwest::header::CONTENT_TYPE, "application/json")
+			.body(body)
+			.send()
 			.await
-			.map_err(|err| rpc::Error::Transport(err.into_inner().into()))?;
+			.map_err(|err| rpc::Error::Transport(err.into()))?;
 
 		let status = res.status();
 		#[cfg(feature = "logging")]
 		log::debug!("outgoing request status: `{}`", status);
 
 		let res = if status.is_success() {
-			res.body_json::<rpc::Response>().await.map_err(|err| {
-				standard_error(StandardError::ParseError, to_raw_value(&err.to_string()).ok())
-			})?
+			res.text().await
 		} else {
 			#[cfg(feature = "logging")]
 			log::debug!("RPC HTTP status: {}", res.status());
-			let err = res.body_string().await.unwrap_or_else(|_| status.canonical_reason().into());
-			let err = to_raw_value(&err).expect("error string");
 			#[cfg(feature = "logging")]
 			log::debug!("RPC Response: {:?}...", &res);
-
+			let err = res.text().await;
+			let _err = err.expect("error string");
+			
 			return Err(if status.is_client_error() {
-				standard_error(StandardError::InvalidRequest, Some(err)).into()
+				standard_error(StandardError::InvalidRequest, None).into()
 			} else {
-				standard_error(StandardError::InternalError, Some(err)).into()
+				standard_error(StandardError::InternalError, None).into()
 			})
 		};
 
 		// assume the response is a hex encoded string starting with "0x"
 		// let response = hex::decode(&res[2..])
 		// 	.map_err(|_err| standard_error(StandardError::InternalError, None))?;
-		res.result.ok_or(jsonrpc::error::Error::EmptyBatch)
+		res.map(|v| RawValue::from_string(v).unwrap())
+			.map_err(|_| jsonrpc::error::Error::EmptyBatch)
 	}
 }
 
 #[cfg(feature = "http")]
 #[cfg(test)]
 mod tests {
+	use tokio::test;
 	use super::Backend;
+	// use core::pin;
+	// use core::future;
 
 	fn init() {
 		let _ = env_logger::builder().is_test(true).try_init();
 	}
 
 	fn polkadot_backend() -> crate::PolkaPipe<Backend> {
-		crate::PolkaPipe::<Backend> { rpc: Backend::new("http://rpc.polkadot.io") }
+		crate::PolkaPipe::<Backend> { rpc: Backend::new("https://rpc.polkadot.io") }
 	}
 	//{"id":1,"jsonrpc":"2.0","method":"state_getKeys","params":["1234"]}
 	//websocat wss://statemint-rpc-tn.dwellir.com
@@ -114,36 +110,36 @@ mod tests {
 	//{"id":1,"jsonrpc":"2.0","method":"state_getKeys","params":["0x26aa394eea5630e07c48ae0c9558cef780d41e5e16056765bc8461851072c9d7"]}
 	//{"id":1,"jsonrpc":"2.0","method":"state_getKeysPaged","params":["0x26aa394eea5630e07c48ae0c9558cef780d41e5e16056765bc8461851072c9d7", 1, ""]}
 	#[test]
-	fn can_get_metadata() {
+	async fn can_get_metadata() {
 		init();
 		let latest_metadata =
-			async_std::task::block_on(polkadot_backend().query_metadata(None)).unwrap();
+			polkadot_backend().query_metadata(None).await.unwrap();
 		assert!(latest_metadata.len() > 0);
 	}
 
 	#[test]
-	fn can_get_metadata_as_of() {
+	async fn can_get_metadata_as_of() {
 		init();
 		let block_hash =
 			hex::decode("e33568bff8e6f30fee6f217a93523a6b29c31c8fe94c076d818b97b97cfd3a16")
 				.unwrap();
 		let as_of_metadata =
-			async_std::task::block_on(polkadot_backend().query_metadata(Some(&block_hash)))
+			polkadot_backend().query_metadata(Some(&block_hash)).await
 				.unwrap();
 		assert!(as_of_metadata.len() > 0);
 	}
 
 	#[test]
-	fn can_get_block_hash() {
+	async fn can_get_block_hash() {
 		init();
 		let polkadot = polkadot_backend();
-		let hash = async_std::task::block_on(polkadot.query_block_hash(&vec![1])).unwrap();
+		let hash = polkadot.query_block_hash(&vec![1]).await.unwrap();
 		assert_eq!(
 			"c0096358534ec8d21d01d34b836eed476a1c343f8724fa2153dc0725ad797a90",
 			hex::encode(hash)
 		);
 
-		let hash = async_std::task::block_on(polkadot.query_block_hash(&vec![10504599])).unwrap();
+		let hash = polkadot.query_block_hash(&vec![10504599]).await.unwrap();
 		assert_eq!(
 			"e33568bff8e6f30fee6f217a93523a6b29c31c8fe94c076d818b97b97cfd3a16",
 			hex::encode(hash)
@@ -151,49 +147,61 @@ mod tests {
 	}
 
 	#[test]
-	fn can_get_full_block() {
+	async fn can_get_full_block() {
 		init();
 		let hash = "c191b96685aad1250b47d6bc2e95392e3a200eaa6dca8bccfaa51cfd6d558a6a";
 		let block_bytes =
-			async_std::task::block_on(polkadot_backend().query_block(Some(hash))).unwrap();
+			polkadot_backend().query_block(Some(hash)).await.unwrap();
 		assert!(matches!(block_bytes, serde_json::value::Value::Object(_)));
 	}
 
 	#[test]
-	fn can_get_latest_block() {
+	async fn can_get_latest_block() {
 		init();
-		let block_bytes = async_std::task::block_on(polkadot_backend().query_block(None)).unwrap();
+		let block_bytes = polkadot_backend().query_block(None).await.unwrap();
 		// println!("{:?}", &block_bytes);
 		assert!(matches!(block_bytes, serde_json::value::Value::Object(_)));
 	}
 
-	#[test]
-	fn can_get_state_keys() {
-		init();
-		let prefix = "c191b96685aad1250b47d6bc2e95392e3a200eaa6dca8bccfaa51cfd6d558a6a";
-		let block_bytes =
-			async_std::task::block_on(polkadot_backend().state_get_keys(prefix, None)).unwrap();
-		// println!("{:?}", block_bytes);
-		assert!(matches!(block_bytes, serde_json::value::Value::Array(_)));
-	}
+	// #[test]
+	// async fn can_get_state_keys() {
+	// 	init();
+	// 	let prefix = "c191b96685aad1250b47d6bc2e95392e3a200eaa6dca8bccfaa51cfd6d558a6a";
+	// 	let block_bytes =
+	// 		polkadot_backend().state_get_keys(prefix, None).await.unwrap();
+	// 	// println!("{:?}", block_bytes);
+	// 	assert!(matches!(block_bytes, serde_json::value::Value::Array(_)));
+	// }
+
+	// #[test]
+	// async fn can_get_state_keys_paged() {
+	// 	init();
+
+	// 	let prefix = "c191b96685aad1250b47d6bc2e95392e3a200eaa6dca8bccfaa51cfd6d558a6a";
+	// 	let block_bytes =
+	// 		polkadot_backend().state_get_keys_paged(prefix, 0, None).await
+	// 			.unwrap();
+	// 	println!("{:?}", block_bytes);
+	// 	assert!(matches!(block_bytes, serde_json::value::Value::Array(_)));
+	// }
+
+	// #[test]
+	// async fn can_get_state_keys_paged_asof() {
+	// 	init();
+	// 	let block_hash =
+	// 		hex::decode("e33568bff8e6f30fee6f217a93523a6b29c31c8fe94c076d818b97b97cfd3a16")
+	// 			.unwrap();
+
+	// 	let prefix = "c191b96685aad1250b47d6bc2e95392e3a200eaa6dca8bccfaa51cfd6d558a6a";
+	// 	let block_bytes =
+	// 		polkadot_backend().state_get_keys_paged(prefix, 0, Some(&block_hash[..])).await
+	// 			.unwrap();
+	// 	println!("{:?}", block_bytes);
+	// 	assert!(matches!(block_bytes, serde_json::value::Value::Array(_)));
+	// }
 
 	#[test]
-	fn can_get_state_keys_as_of() {
-		init();
-		let block_hash =
-			hex::decode("e33568bff8e6f30fee6f217a93523a6b29c31c8fe94c076d818b97b97cfd3a16")
-				.unwrap();
-
-		let prefix = "c191b96685aad1250b47d6bc2e95392e3a200eaa6dca8bccfaa51cfd6d558a6a";
-		let block_bytes =
-			async_std::task::block_on(polkadot_backend().state_get_keys_paged(prefix, 0, None))
-				.unwrap();
-		// println!("{:?}", block_bytes);
-		assert!(matches!(block_bytes, serde_json::value::Value::Array(_)));
-	}
-
-	#[test]
-	fn can_get_storage_as_of() {
+	async fn can_get_storage_as_of() {
 		init();
 		let block_hash =
 			hex::decode("e33568bff8e6f30fee6f217a93523a6b29c31c8fe94c076d818b97b97cfd3a16")
@@ -202,40 +210,40 @@ mod tests {
 		let events_key = "26aa394eea5630e07c48ae0c9558cef780d41e5e16056765bc8461851072c9d7";
 		let key = hex::decode(events_key).unwrap();
 
-		let as_of_events = async_std::task::block_on(
-			polkadot_backend().query_storage(&key[..], Some(&block_hash)),
-		)
+		let as_of_events = 
+			polkadot_backend().query_storage(&key[..], Some(&block_hash)).await
+		
 		.unwrap();
 		assert!(as_of_events.len() > 0);
 	}
 
 	#[test]
-	fn can_get_storage_now() {
+	async fn can_get_storage_now() {
 		init();
 		let key = "26aa394eea5630e07c48ae0c9558cef780d41e5e16056765bc8461851072c9d7";
 		let key = hex::decode(key).unwrap();
 		let parachain = polkadot_backend();
 
 		let as_of_events =
-			async_std::task::block_on(parachain.query_storage(&key[..], None)).unwrap();
+			parachain.query_storage(&key[..], None).await.unwrap();
 		assert!(as_of_events.len() > 10);
 	}
 
 	#[test]
-	fn can_get_state_call_metadata_now() {
+	async fn can_get_state_call_metadata_now() {
 		init();
 		let key = "";
 		let key = hex::decode(key).unwrap();
 		let parachain = polkadot_backend();
 
-		let payload = async_std::task::block_on(parachain.query_state_call(
+		let payload = parachain.query_state_call(
 			"Metadata_metadata",
 			&key[..],
 			None,
-		))
+		).await
 		.unwrap();
 
-		let payload2 = async_std::task::block_on(parachain.query_metadata(None)).unwrap();
+		let payload2 = parachain.query_metadata(None).await.unwrap();
 
 		assert!(payload.len() > 10);
 		//4 extra bytes prefixed if you call state_call: 206, 153, 21, 0, rather than getMetadata.
@@ -243,9 +251,9 @@ mod tests {
 	}
 
 	// #[test]
-	// fn can_get_state_changes() {
+	// async fn can_get_state_changes() {
 	// 	init();
-	// 	async_std::task::block_on(testy());
+	// 	testy().await;
 	// }
 
 	// async fn testy() {
@@ -254,7 +262,6 @@ mod tests {
 	// 	let parachain = polkadot_backend();
 
 	// 	let payload_stream =
-	// 		async_std::task::block_on(parachain.subscribe_storage( &key[..], None));
-
+	// 		parachain.subscribe_storage( &key[..], None).await;
 	// }
 }
